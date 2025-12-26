@@ -10,8 +10,12 @@ import (
 
 // --- Step 2: สร้างสมาชิกใหม่ตามสายงาน ---
 func CreateDownline(c *fiber.Ctx) error {
-	// 1. ดึงข้อมูลหัวหน้า (คนที่ล็อกอินอยู่) จาก Middleware
-	parent := c.Locals("user").(*models.User)
+	// ดึงข้อมูลหัวหน้าจาก Locals (ตรวจสอบให้แน่ใจว่า Middleware ของคุณส่งมาเป็น *models.User)
+	parent, ok := c.Locals("user").(*models.User)
+	if !ok {
+		// กรณี Middleware ส่งมาแค่ ID ให้ดึงข้อมูลใหม่ หรือแจ้ง Error
+		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถดึงข้อมูลผู้สร้างได้"})
+	}
 
 	type Request struct {
 		Username string  `json:"username"`
@@ -28,13 +32,11 @@ func CreateDownline(c *fiber.Ctx) error {
 
 	// 2. ตรวจสอบลำดับขั้น (Hierarchy Logic)
 	isValid := false
-	if parent.Role == "admin" && req.Role == "master" {
+	if parent.Role == "admin" && (req.Role == "master" || req.Role == "agent" || req.Role == "user") {
 		isValid = true
-	}
-	if parent.Role == "master" && req.Role == "agent" {
+	} else if parent.Role == "master" && (req.Role == "agent" || req.Role == "user") {
 		isValid = true
-	}
-	if parent.Role == "agent" && req.Role == "user" {
+	} else if parent.Role == "agent" && req.Role == "user" {
 		isValid = true
 	}
 
@@ -42,7 +44,7 @@ func CreateDownline(c *fiber.Ctx) error {
 		return c.Status(403).JSON(fiber.Map{"error": "คุณไม่มีสิทธิ์สร้างสมาชิกในระดับนี้"})
 	}
 
-	// 3. ตรวจสอบค่า Share ห้ามเกินหัวหน้า (ยกเว้น Admin)
+	// 3. ตรวจสอบค่า Share ห้ามเกินหัวหน้า
 	if parent.Role != "admin" && req.Share > parent.Share {
 		return c.Status(400).JSON(fiber.Map{"error": "ห้ามตั้งค่าหุ้นเกินกว่าที่คุณถืออยู่"})
 	}
@@ -54,10 +56,10 @@ func CreateDownline(c *fiber.Ctx) error {
 		Username: req.Username,
 		Password: string(hashed),
 		Role:     req.Role,
-		ParentID: &parent.ID, // ✅ ผูก ID ของหัวหน้า
+		ParentID: &parent.ID,
 		Share:    req.Share,
 		Com:      req.Com,
-		Credit:   0, // เริ่มต้นที่ 0
+		Credit:   0,
 		Status:   "active",
 	}
 
@@ -70,94 +72,127 @@ func CreateDownline(c *fiber.Ctx) error {
 
 // --- Step 3: การโอนเครดิต (Transfer Credit) ---
 func TransferCredit(c *fiber.Ctx) error {
-	sender := c.Locals("user").(*models.User)
-
-	type Request struct {
-		ToUserID uint    `json:"to_user_id"`
-		Amount   float64 `json:"amount"` // ยอดเงินที่จะโอน
+	var body struct {
+		ReceiverUsername string  `json:"username"`
+		Amount           float64 `json:"amount"`
 	}
 
-	var req Request
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
+	if err := c.BodyParser(&body); err != nil || body.Amount <= 0 {
+		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง หรือยอดเงินต้องมากกว่า 0"})
 	}
 
-	// 1. ตรวจสอบยอดเงินคนส่ง (ยกเว้น Admin ที่เสกเงินได้)
-	if sender.Role != "admin" && sender.Credit < req.Amount {
-		return c.Status(400).JSON(fiber.Map{"error": "เครดิตของคุณไม่พอ"})
+	// 1. ดึง ID ผู้โอน (รองรับทั้ง float64 จาก JWT หรือ uint)
+	var senderID uint
+	switch v := c.Locals("user_id").(type) {
+	case float64:
+		senderID = uint(v)
+	case uint:
+		senderID = v
 	}
 
-	// 2. ใช้ Database Transaction เพื่อความปลอดภัย (ต้องสำเร็จทั้งคู่หรือล้มเหลวทั้งคู่)
-	err := database.DB.Transaction(func(tx *gorm.DB) error {
-		var recipient models.User
-		if err := tx.First(&recipient, req.ToUserID).Error; err != nil {
-			return err // หาคนรับไม่เจอ
+	// 2. เริ่มต้น Database Transaction
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		var sender models.User
+		if err := tx.First(&sender, senderID).Error; err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "ไม่พบผู้โอน"})
 		}
 
-		// 3. ตรวจสอบว่าเป็นลูกน้องในสายงานจริงไหม (ป้องกันการข้ามสาย)
-		if recipient.ParentID == nil || *recipient.ParentID != sender.ID {
-			return fiber.NewError(403, "สมาชิกคนนี้ไม่ได้อยู่ในสายงานของคุณ")
+		// 3. ตรวจสอบเครดิตผู้โอน
+		if sender.Credit < body.Amount {
+			return c.Status(400).JSON(fiber.Map{"error": "เครดิตของคุณไม่เพียงพอ"})
 		}
 
-		// 4. หักเงินคนส่ง (ถ้าไม่ใช่ Admin)
+		// 4. ค้นหาผู้รับ
+		var receiver models.User
+		if err := tx.Where("username = ?", body.ReceiverUsername).First(&receiver).Error; err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "ไม่พบผู้รับคนนี้ในระบบ"})
+		}
+
+		// ตรวจสอบสิทธิ์: โอนให้คนในสายงานตัวเองเท่านั้น (ยกเว้น Admin โอนได้ทุกคน)
 		if sender.Role != "admin" {
-			if err := tx.Model(sender).Update("credit", sender.Credit-req.Amount).Error; err != nil {
-				return err
+			if receiver.ParentID == nil || *receiver.ParentID != sender.ID {
+				return c.Status(403).JSON(fiber.Map{"error": "คุณสามารถโอนให้สมาชิกภายใต้สายงานของคุณเท่านั้น"})
 			}
 		}
 
-		// 5. เพิ่มเงินคนรับ
-		if err := tx.Model(&recipient).Update("credit", recipient.Credit+req.Amount).Error; err != nil {
+		// 5. บันทึกยอดเงินก่อนโอน เพื่อลง Log
+		balanceBefore := sender.Credit
+		balanceAfter := sender.Credit - body.Amount
+
+		// 6. อัปเดตเครดิต (Atomic operations)
+		if err := tx.Model(&sender).Update("credit", gorm.Expr("credit - ?", body.Amount)).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&receiver).Update("credit", gorm.Expr("credit + ?", body.Amount)).Error; err != nil {
 			return err
 		}
 
-		return nil
-	})
+		// 7. บันทึก Transaction Log (ปรับให้เข้ากับ Model ใหม่)
+		log := models.Transaction{
+			UserID:        sender.ID,
+			TargetID:      &receiver.ID, // ใช้ Pointer ตาม Model
+			Amount:        body.Amount,
+			Type:          "transfer",
+			Status:        "success",
+			BalanceBefore: balanceBefore,
+			BalanceAfter:  balanceAfter,
+		}
+		if err := tx.Create(&log).Error; err != nil {
+			return err
+		}
 
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		return c.JSON(fiber.Map{
+			"message":     "โอนเครดิตสำเร็จ!",
+			"new_balance": balanceAfter,
+		})
+	})
+}
+
+// --- สรุปยอดเคลียร์เงิน ---
+func GetSettlementSummary(c *fiber.Ctx) error {
+	// ดึงข้อมูลเอเย่นต์
+	var agentID uint
+	switch v := c.Locals("user_id").(type) {
+	case float64:
+		agentID = uint(v)
+	case uint:
+		agentID = v
 	}
 
-	return c.JSON(fiber.Map{"message": "โอนเครดิตสำเร็จ"})
-}
-func GetSettlementSummary(c *fiber.Ctx) error {
-	agent := c.Locals("user").(*models.User)
+	var agent models.User
+	database.DB.First(&agent, agentID)
 
 	type SettlementResult struct {
 		TotalTurnover float64 `json:"total_turnover"`
-		TotalWinLoss  float64 `json:"total_win_loss"`  // ยอดแพ้ชนะรวมของลูกทีม
-		AgentShareAmt float64 `json:"agent_share_amt"` // ยอดที่เอเย่นต์ต้องรับผิดชอบ (ตาม % หุ้น)
-		AgentComAmt   float64 `json:"agent_com_amt"`   // ค่าคอมมิชชั่นที่เอเย่นต์ได้รับ
-		NetSettlement float64 `json:"net_settlement"`  // ยอดสุทธิที่ต้องเคลียร์กัน
+		TotalWinLoss  float64 `json:"total_win_loss"`
+		AgentShareAmt float64 `json:"agent_share_amt"`
+		AgentComAmt   float64 `json:"agent_com_amt"`
+		NetSettlement float64 `json:"net_settlement"`
 	}
 
 	var result SettlementResult
 
-	// คำนวณยอดรวมจากลูกทีมทุกคน
-	err := database.DB.Table("users").
+	// คำนวณยอดจากลูกทีม
+	database.DB.Table("users").
 		Select("COALESCE(SUM(bets.amount), 0) as total_turnover, "+
 			"(COALESCE(SUM(bets.amount), 0) - COALESCE(SUM(bets.payout), 0)) as total_win_loss").
 		Joins("LEFT JOIN bets ON bets.user_id = users.id").
 		Where("users.parent_id = ?", agent.ID).
-		Scan(&result).Error
+		Scan(&result)
 
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "คำนวณยอดผิดพลาด"})
-	}
-
-	// คำนวณส่วนของเอเย่นต์ตาม Share และ Com ที่ผูกกับตัวเอเย่นต์เอง
 	result.AgentShareAmt = result.TotalWinLoss * (agent.Share / 100)
 	result.AgentComAmt = result.TotalTurnover * (agent.Com / 100)
 	result.NetSettlement = result.AgentShareAmt + result.AgentComAmt
 
 	return c.JSON(result)
 }
+
+// --- ดึงประวัติการเคลียร์เงิน ---
 func GetSettlementRecords(c *fiber.Ctx) error {
-	agent := c.Locals("user").(*models.User)
+	userID := c.Locals("user_id")
 	var records []models.Settlement
 
-	// ดึงข้อมูลประวัติการเคลียร์เงินที่เคยบันทึกไว้ในฐานข้อมูล
-	err := database.DB.Where("agent_id = ?", agent.ID).
+	err := database.DB.Where("agent_id = ?", userID).
 		Order("created_at desc").
 		Find(&records).Error
 
@@ -167,12 +202,19 @@ func GetSettlementRecords(c *fiber.Ctx) error {
 
 	return c.JSON(records)
 }
-func GetTeam(c *fiber.Ctx) error {
-	agent := c.Locals("user").(*models.User)
-	var team []models.User
 
-	// หา User ทุกคนที่มี ParentID เท่ากับ ID ของเอเย่นต์คนนี้
-	err := database.DB.Where("parent_id = ?", agent.ID).Find(&team).Error
+// --- ดึงรายชื่อลูกทีม ---
+func GetTeam(c *fiber.Ctx) error {
+	var agentID uint
+	switch v := c.Locals("user_id").(type) {
+	case float64:
+		agentID = uint(v)
+	case uint:
+		agentID = v
+	}
+
+	var team []models.User
+	err := database.DB.Where("parent_id = ?", agentID).Find(&team).Error
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "ดึงข้อมูลลูกทีมไม่สำเร็จ"})
 	}

@@ -11,11 +11,3 @@ type BankAccount struct {
 }
 
 // models/transaction.go
-type Transaction struct {
-	gorm.Model
-	UserID      uint    `json:"user_id"`
-	Type        string  `json:"type"` // "deposit" (ฝาก) หรือ "withdraw" (ถอน)
-	Amount      float64 `json:"amount"`
-	Status      string  `json:"status"` // "pending", "approved", "rejected"
-	Description string  `json:"description"`
-}

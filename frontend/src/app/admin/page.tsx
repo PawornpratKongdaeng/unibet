@@ -1,18 +1,21 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import Swal from "sweetalert2";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 // --- Main Admin Dashboard ---
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState("users");
+  const [activeTab, setActiveTab] = useState("overview"); // เริ่มที่หน้า Overview
   const [adminInfo, setAdminInfo] = useState<any>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // State สำหรับข้อมูลจาก Backend
+  // State ข้อมูลจาก Backend
   const [users, setUsers] = useState<any[]>([]);
   const [bets, setBets] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]); // เพิ่ม state สำหรับฝาก-ถอน
 
-  // ฟังก์ชันดึงข้อมูล (ห่อด้วย useCallback เพื่อให้ส่งลงไปใน props ได้อย่างเสถียร)
   const initDashboard = useCallback(async () => {
     const token = localStorage.getItem("token");
     const fetchData = async (endpoint: string) => {
@@ -27,20 +30,18 @@ export default function AdminDashboard() {
     };
 
     try {
-      // ไม่ต้องเซ็ต isLoading เป็น true ทุกครั้งที่ refresh เพื่อไม่ให้หน้าจอขาว (Silent Refresh)
-      const [adminData, usersData, betsData] = await Promise.all([
+      const [adminData, usersData, betsData, txData] = await Promise.all([
         fetch("http://localhost:8080/api/v3/me", {
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json"
-          }
+          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
         }).then(res => res.json()),
         fetchData("users"),
-        fetchData("bets")
+        fetchData("bets"),
+        fetchData("transactions/pending") // ดึงข้อมูลธุรกรรมมาคำนวณยอด
       ]);
       setAdminInfo(adminData);
       setUsers(usersData);
       setBets(betsData);
+      setTransactions(txData);
     } catch (err) {
       console.error("Fetch Error:", err);
     } finally {
@@ -48,87 +49,72 @@ export default function AdminDashboard() {
     }
   }, []);
 
-  useEffect(() => {
-    initDashboard();
-  }, [initDashboard]);
+  useEffect(() => { initDashboard(); }, [initDashboard]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    window.location.href = "/login";
+  const renderContent = () => {
+    switch (activeTab) {
+      case "overview":
+        return <DashboardOverview users={users} bets={bets} transactions={transactions} onNavigate={setActiveTab} />;
+      case "users": 
+        return <UserManagementDemo users={users} onRefresh={initDashboard} />;
+      case "transactions":
+        return <div className="text-white p-10 bg-zinc-900 rounded-3xl border border-zinc-800 uppercase font-black">Transaction Approval Page</div>;
+      case "finance":
+        return <div className="text-white p-10 bg-zinc-900 rounded-3xl border border-zinc-800 uppercase font-black">Financial Reports</div>;
+      case "bank":
+        return <div className="text-white p-10 bg-zinc-900 rounded-3xl border border-zinc-800 uppercase font-black">Admin Bank Settings</div>;
+      case "bets": 
+        return <AllBetsReportDemo bets={bets} />;
+      case "settings":
+        return <SettingsDemo />;
+      default: 
+        return <DashboardOverview users={users} bets={bets} transactions={transactions} onNavigate={setActiveTab} />;
+    }
   };
 
- const renderContent = () => {
-  switch (activeTab) {
-    case "overview":
-      return <DashboardOverview users={users} bets={bets} onNavigate={setActiveTab} />;
-    case "users": 
-      return <UserManagementDemo users={users} onRefresh={initDashboard} />;
-    case "bets": 
-      return <AllBetsReportDemo bets={bets} />;
-    case "settings":
-      return <SettingsDemo />;
-    // เพิ่มเคสใหม่ๆ ตามที่เพิ่มใน DashboardOverview
-    case "matches":
-      return <div className="text-white p-10 bg-zinc-900 rounded-3xl border border-zinc-800">Match Management (Coming Soon...)</div>;
-    case "agent":
-      return <div className="text-white p-10 bg-zinc-900 rounded-3xl border border-zinc-800">Agent System (Coming Soon...)</div>;
-    default: 
-      return <DashboardOverview users={users} bets={bets} onNavigate={setActiveTab} />;
-  }
-};
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="w-16 h-16 border-4 border-zinc-800 border-t-white rounded-full animate-spin"></div>
-      </div>
-    );
-  }
+  if (isLoading) return <div className="min-h-screen bg-black flex items-center justify-center"><div className="w-16 h-16 border-4 border-zinc-800 border-t-white rounded-full animate-spin"></div></div>;
 
   return (
-    <div className="min-h-screen bg-black text-white flex relative overflow-hidden">
-      {/* Sidebar & Header (ใช้โค้ดเดิมที่ปรับปรุงแล้ว) */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-80 bg-zinc-950/95 backdrop-blur-xl border-r border-zinc-800 transform transition-all duration-500 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0 lg:static shadow-2xl`}>
-        <div className="h-full flex flex-col p-8">
-          <div className="mb-12 flex items-center gap-4">
-            <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center font-black text-black text-2xl">A</div>
-            <div>
-              <h1 className="text-2xl font-black text-white leading-none">ADMIN</h1>
-              <p className="text-xs text-zinc-500 font-bold uppercase mt-1">Control Panel</p>
-            </div>
+    <div className="min-h-screen bg-black text-white flex relative overflow-hidden font-sans">
+      {/* Sidebar */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-zinc-950/95 backdrop-blur-xl border-r border-zinc-900 transform transition-all duration-500 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0 lg:static`}>
+        <div className="h-full flex flex-col p-6">
+          <div className="mb-10 flex items-center gap-3 px-2">
+            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-black text-xl">A</div>
+            <h1 className="text-xl font-black text-white tracking-tighter">SOCCER ADMIN</h1>
           </div>
-          <nav className="flex-1 space-y-3">
-            <NavItem icon={<UsersIcon />} label="จัดการสมาชิก" sublabel="User Management" active={activeTab === "users"} onClick={() => { setActiveTab("users"); setIsSidebarOpen(false); }} />
-            <NavItem icon={<ChartIcon />} label="รายงานเดิมพัน" sublabel="Betting Reports" active={activeTab === "bets"} onClick={() => { setActiveTab("bets"); setIsSidebarOpen(false); }} />
-            <NavItem icon={<SettingsIcon />} label="ตั้งค่าระบบ" sublabel="Settings" active={activeTab === "settings"} onClick={() => { setActiveTab("settings"); setIsSidebarOpen(false); }} />
-          </nav>
-          <button onClick={handleLogout} className="w-full mt-auto flex items-center justify-center gap-3 p-5 text-sm font-bold text-zinc-400 hover:text-white bg-zinc-900/50 hover:bg-zinc-800 rounded-2xl transition-all border border-zinc-800">
-            <LogoutIcon /> ออกจากระบบ
+          
+          <nav className="flex-1 space-y-1">
+  <NavItem icon="🏠" label="หน้าหลัก" sublabel="Overview" href="/admin" />
+  <NavItem icon="👥" label="จัดการสมาชิก" sublabel="Users" href="/admin/add-user" />
+  <NavItem icon="💸" label="รายการฝาก-ถอน" sublabel="Transactions" href="/admin/transactions" />
+  <NavItem icon="📊" label="สรุปการเงิน" sublabel="Finance" href="/admin/finance" />
+  <NavItem icon="📑" label="รายงานเดิมพัน" sublabel="Bets" href="/admin/bets" />
+  <NavItem icon="🏦" label="ตั้งค่าธนาคาร" sublabel="Bank Settings" href="/admin/bank-settings" />
+  <NavItem icon="⚙️" label="ตั้งค่าระบบ" sublabel="Settings" href="/admin/settings" />
+</nav>
+
+          <button onClick={() => { localStorage.removeItem("token"); window.location.href = "/login"; }} className="w-full mt-auto p-4 text-xs font-black text-zinc-500 hover:text-white bg-zinc-900/50 rounded-2xl border border-zinc-800 transition-all uppercase tracking-widest">
+            Logout System
           </button>
         </div>
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-24 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-40 flex items-center px-6 lg:px-10">
-          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="lg:hidden p-3 text-white mr-4"><MenuIcon /></button>
-          <div className="flex-1">
-            <h2 className="text-2xl font-black text-white uppercase tracking-tight">
-              {activeTab === 'users' ? 'User Management' : activeTab === 'bets' ? 'Betting Reports' : 'System Settings'}
-            </h2>
-          </div>
-          <div className="flex items-center gap-5 text-right">
-            <div className="hidden sm:block">
-              <p className="text-xs font-black text-zinc-500 uppercase">Administrator</p>
-              <p className="text-base font-bold text-white">{adminInfo?.username}</p>
+        <header className="h-20 border-b border-zinc-900 bg-black/50 backdrop-blur-md sticky top-0 z-40 flex items-center px-8">
+          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="lg:hidden p-2 text-white mr-4">☰</button>
+          <div className="flex-1"><h2 className="text-sm font-black text-zinc-400 uppercase tracking-[0.2em]">{activeTab} Mode</h2></div>
+          <div className="flex items-center gap-4 text-right">
+            <div>
+              <p className="text-[10px] font-black text-zinc-600 uppercase">Current Admin</p>
+              <p className="text-sm font-bold text-white">{adminInfo?.username}</p>
             </div>
-            <div className="w-14 h-14 bg-zinc-900 rounded-2xl border-2 border-zinc-800 flex items-center justify-center shadow-lg"><UserIcon /></div>
+            <div className="w-10 h-10 bg-zinc-900 rounded-full border border-zinc-800 flex items-center justify-center italic font-black">A</div>
           </div>
         </header>
 
         <main className="flex-1 p-6 lg:p-10 overflow-auto">
-          <div className="max-w-7xl mx-auto">
-            {renderContent()}
-          </div>
+          <div className="max-w-7xl mx-auto">{renderContent()}</div>
         </main>
       </div>
     </div>
@@ -288,18 +274,31 @@ function SettingsDemo() {
 }
 
 // --- Reusable UI Elements ---
-function NavItem({ icon, label, sublabel, active, onClick }: any) {
+function NavItem({ icon, label, sublabel, href }: { icon: any, label: string, sublabel: string, href: string }) {
+  const pathname = usePathname();
+  // เช็คว่า pathname ปัจจุบันตรงกับ href หรือไม่
+  const isActive = pathname === href;
+
   return (
-    <button onClick={onClick} className={`relative w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all ${active ? "bg-white text-black scale-105" : "text-zinc-400 hover:bg-zinc-900"}`}>
-      <span>{icon}</span>
-      <div className="flex-1 text-left">
-        <div className="font-bold">{label}</div>
-        <div className={`text-[10px] font-bold uppercase tracking-widest ${active ? 'text-zinc-600' : 'text-zinc-500'}`}>{sublabel}</div>
+    <Link href={href} className="block w-full">
+      <div className={`flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 ${
+        isActive 
+          ? "bg-white text-black font-black scale-[1.02] shadow-xl shadow-white/5" 
+          : "text-zinc-500 hover:text-white hover:bg-zinc-900"
+      }`}>
+        <span className="text-xl">{icon}</span>
+        <div className="text-left">
+          <p className="text-sm font-bold leading-none">{label}</p>
+          <p className={`text-[9px] font-black uppercase tracking-widest mt-1 ${
+            isActive ? "text-zinc-400" : "text-zinc-600"
+          }`}>
+            {sublabel}
+          </p>
+        </div>
       </div>
-    </button>
+    </Link>
   );
 }
-
 function StatCard({ title, value, icon }: any) {
   return (
     <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-xl">
@@ -334,113 +333,57 @@ const DiceIcon = () => <svg className="w-8 h-8" fill="none" stroke="currentColor
 const DollarIcon = () => <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
 const TrendingIcon = () => <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>;
 
-function DashboardOverview({ users, bets, onNavigate }: { users: any[], bets: any[], onNavigate: (tab: string) => void }) {
-  const totalWagered = bets.reduce((sum, b) => sum + (b.amount || 0), 0);
+function DashboardOverview({ users, bets, transactions, onNavigate }: any) {
+  // คำนวณยอด (ในงานจริงควรให้ Backend ส่งยอดสรุปมาให้เลยจะเร็วขึ้น)
+  const totalStake = bets.reduce((sum: number, b: any) => sum + (b.amount || 0), 0);
+  const onlineUsers = users.filter((u: any) => u.is_online).length; // สมมติว่ามี field is_online
   
-  // เพิ่มข้อมูลช่อง (Cards) ตามหน้าที่จริงใน Backend
-  const functions = [
-    {
-      title: "User Management",
-      description: "จัดการสมาชิกและยอดเงิน",
-      value: users.length,
-      unit: "Users",
-      icon: <UsersIcon />,
-      color: "from-blue-500/20",
-      target: "users"
-    },
-    {
-      title: "Betting Reports",
-      description: "ประวัติการเดิมพันทั้งหมด",
-      value: bets.length,
-      unit: "Tickets",
-      icon: <DiceIcon />,
-      color: "from-purple-500/20",
-      target: "bets"
-    },
-    {
-      title: "Match Schedule",
-      description: "จัดการตารางการแข่งขัน",
-      value: "LIVE",
-      unit: "Status",
-      icon: <TrophyIcon />,
-      color: "from-amber-500/20",
-      target: "matches" // เพิ่ม Tab นี้ในอนาคตได้
-    },
-    {
-      title: "Financial Summary",
-      description: "สรุปยอดเงินหมุนเวียนรวม",
-      value: `฿${totalWagered.toLocaleString()}`,
-      unit: "Turnover",
-      icon: <DollarIcon />,
-      color: "from-green-500/20",
-      target: "bets"
-    },
-    {
-      title: "Agent Control",
-      description: "จัดการสายงานและเอเย่นต์",
-      value: "Active",
-      unit: "System",
-      icon: <AgentIcon />,
-      color: "from-rose-500/20",
-      target: "agent" // เพิ่ม Tab นี้ในอนาคตได้
-    },
-    {
-      title: "System Settings",
-      description: "ตั้งค่าระบบและ Maintenance",
-      value: "Normal",
-      unit: "Status",
-      icon: <SettingsIcon />,
-      color: "from-zinc-500/20",
-      target: "settings"
-    }
+  // ตัวอย่างข้อมูลยอดฝาก-ถอน (กรองจาก transactions ถ้ามีข้อมูลสถานะ success)
+  const totalDeposit = transactions.filter((t: any) => t.type === 'deposit' && t.status === 'success').reduce((sum: number, t: any) => sum + t.amount, 0);
+  const totalWithdraw = transactions.filter((t: any) => t.type === 'withdraw' && t.status === 'success').reduce((sum: number, t: any) => sum + t.amount, 0);
+
+  const stats = [
+    { label: "สมาชิกทั้งหมด", value: users.length, unit: "คน", icon: "👥", color: "text-blue-500", bg: "bg-blue-500/10" },
+    { label: "กำลังออนไลน์", value: onlineUsers || 1, unit: "คน", icon: "🟢", color: "text-green-500", bg: "bg-green-500/10" },
+    { label: "ยอดฝากวันนี้", value: `฿${totalDeposit.toLocaleString()}`, unit: "Total", icon: "💰", color: "text-emerald-400", bg: "bg-emerald-500/10" },
+    { label: "ยอดถอนวันนี้", value: `฿${totalWithdraw.toLocaleString()}`, unit: "Total", icon: "💸", color: "text-rose-500", bg: "bg-rose-500/10" },
+    { label: "ยอดเล่นสะสม (Turnover)", value: `฿${totalStake.toLocaleString()}`, unit: "Volume", icon: "⚽", color: "text-amber-400", bg: "bg-amber-500/10" },
+    { label: "บิลเดิมพันวันนี้", value: bets.length, unit: "Tickets", icon: "📝", color: "text-purple-500", bg: "bg-purple-500/10" },
   ];
 
   return (
-    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-6 duration-700">
-      {/* Welcome Header */}
-      <div className="flex flex-col gap-2">
-        <h2 className="text-4xl font-black text-white tracking-tighter uppercase">Admin Console</h2>
-        <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-            <p className="text-zinc-500 font-bold uppercase text-xs tracking-widest">System Online & Ready</p>
-        </div>
-      </div>
-
-      {/* Grid Layout: ปรับเป็น 3 คอลัมน์ในจอใหญ่เพื่อให้ช่องดูใหญ่และกดง่าย */}
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {functions.map((item, idx) => (
-          <div 
-            key={idx}
-            onClick={() => onNavigate(item.target)}
-            className="group relative overflow-hidden bg-zinc-900/40 border border-zinc-800 p-8 rounded-[2.5rem] cursor-pointer hover:border-white/30 transition-all duration-500 hover:shadow-[0_20px_50px_rgba(0,0,0,0.5)]"
-          >
-            {/* Background Glow Effect */}
-            <div className={`absolute inset-0 bg-gradient-to-br ${item.color} to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500`}></div>
-            
-            <div className="relative z-10 flex flex-col h-full">
-              <div className="flex justify-between items-start mb-10">
-                <div className="w-16 h-16 bg-zinc-950 rounded-2xl border border-zinc-800 flex items-center justify-center text-white group-hover:scale-110 group-hover:border-white/20 transition-all duration-500">
-                  {item.icon}
-                </div>
-                <div className="p-2 rounded-full bg-zinc-800/50 text-zinc-500 group-hover:text-white group-hover:bg-white/10 transition-all">
-                  <ArrowIcon />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <h4 className="text-white text-xl font-bold tracking-tight">{item.title}</h4>
-                <p className="text-zinc-500 text-sm font-medium">{item.description}</p>
-              </div>
-
-              <div className="mt-8 flex items-baseline gap-2">
-                <span className="text-4xl font-black text-white tracking-tighter group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-zinc-500 transition-all duration-500">
-                  {item.value}
-                </span>
-                <span className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">{item.unit}</span>
-              </div>
+        {stats.map((stat, i) => (
+          <div key={i} className="bg-zinc-900/40 border border-zinc-800 p-8 rounded-[2.5rem] hover:border-zinc-700 transition-all group">
+            <div className={`w-14 h-14 ${stat.bg} ${stat.color} rounded-2xl flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform`}>
+              {stat.icon}
+            </div>
+            <p className="text-zinc-500 text-xs font-black uppercase tracking-widest mb-1">{stat.label}</p>
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-3xl font-black text-white tracking-tighter">{stat.value}</h3>
+              <span className="text-[10px] font-black text-zinc-600 uppercase">{stat.unit}</span>
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Quick Menu */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div onClick={() => onNavigate('transactions')} className="p-8 bg-gradient-to-br from-zinc-900 to-black border border-zinc-800 rounded-[2.5rem] cursor-pointer hover:border-white/20 transition-all flex justify-between items-center group">
+          <div>
+            <h4 className="text-xl font-black text-white uppercase italic">Financial Pending</h4>
+            <p className="text-zinc-500 text-sm">มีรายการรออนุมัติ {transactions.length} รายการ</p>
+          </div>
+          <div className="w-12 h-12 rounded-full border border-zinc-800 flex items-center justify-center group-hover:bg-white group-hover:text-black transition-all">→</div>
+        </div>
+        <div onClick={() => onNavigate('users')} className="p-8 bg-zinc-900/40 border border-zinc-800 rounded-[2.5rem] cursor-pointer hover:border-white/20 transition-all flex justify-between items-center group">
+          <div>
+            <h4 className="text-xl font-black text-white uppercase italic">User Control</h4>
+            <p className="text-zinc-500 text-sm">จัดการข้อมูลและเครดิตสมาชิก</p>
+          </div>
+          <div className="w-12 h-12 rounded-full border border-zinc-800 flex items-center justify-center group-hover:bg-white group-hover:text-black transition-all">→</div>
+        </div>
       </div>
     </div>
   );

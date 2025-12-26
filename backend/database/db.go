@@ -16,7 +16,7 @@ func InitDB() {
 
 	// 1. ตั้งค่า DSN (Data Source Name) ให้ตรงกับ docker-compose.yml
 	// รูปแบบ: "user:password@tcp(127.0.0.1:3306)/dbname?charset=utf8mb4&parseTime=True&loc=Local"
-	dsn := "root:admin123@tcp(127.0.0.1:3306)/soccer_db?charset=utf8mb4&parseTime=True&loc=Local"
+	dsn := "root:admin123@tcp(127.0.0.1:3307)/soccer_db?charset=utf8mb4&parseTime=True&loc=Local"
 
 	// 2. เชื่อมต่อ MySQL
 	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
@@ -33,6 +33,8 @@ func InitDB() {
 		&models.BetSlip{},
 		&models.ParlayTicket{},
 		&models.ParlayItem{},
+		&models.Settlement{},
+		&models.Transaction{},
 	)
 
 	// 4. Seeding: สร้าง Admin เริ่มต้น
@@ -60,7 +62,7 @@ func seedAdmin() {
 		if err := DB.Create(&admin).Error; err != nil {
 			log.Println("❌ Error seeding admin:", err)
 		} else {
-			log.Println("👤 Default Admin 'TideKung' created successfully!")
+			log.Println(" Default Admin 'TideKung' created successfully!")
 		}
 	}
 }

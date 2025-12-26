@@ -5,13 +5,11 @@ import (
 )
 
 type Settlement struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	AgentID       uint      `json:"agent_id"`
-	AgentUsername string    `json:"agent_username"`
-	TotalTurnover float64   `json:"total_turnover"`
-	TotalWinLoss  float64   `json:"total_win_loss"`
-	NetSettlement float64   `json:"net_settlement"`
-	PeriodStart   time.Time `json:"period_start"`
-	PeriodEnd     time.Time `json:"period_end"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	AgentID     uint      `gorm:"index" json:"agent_id"`
+	TotalAmount float64   `json:"total_amount"`
+	Status      string    `json:"status"` // เช่น "pending", "completed"
+	Remark      string    `json:"remark"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }

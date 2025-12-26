@@ -2,30 +2,31 @@ package routes
 
 import (
 	"github.com/PawornpratKongdaeng/soccer/handlers"
-	"github.com/PawornpratKongdaeng/soccer/middleware" // อย่าลืม import middleware
+	"github.com/PawornpratKongdaeng/soccer/middleware"
 	"github.com/gofiber/fiber/v2"
 )
 
 func SetupRoutes(app *fiber.App) {
-	// 🚩 เปลี่ยนตรงนี้ให้ระวัง: ถ้าหน้าบ้านเรียก /api/me
-	// แต่ตรงนี้เป็น /api/v3 Path จะไม่ตรงกันครับ
+	// กรุ๊ปหลักของ API v3
 	api := app.Group("/api/v3")
 
 	// --- Zone 1: Public (ไม่ต้องมี Token) ---
 	api.Post("/register", handlers.Register)
 	api.Post("/login", handlers.Login)
 	api.Get("/match/:path", handlers.GetMatches)
+	app.Get("/api/admin/config/bank", handlers.GetAdminBank)
 
 	// --- Zone 2: Member (ต้องมี Token) ---
-	// ใช้ api.Group เพื่อสืบทอด /api/v3 มา แล้วใส่ Middleware ครอบไว้
 	member := api.Group("/", middleware.AuthMiddleware())
 	{
-		// ✅ เปลี่ยนจาก auth.Get เป็น member.Get
-		// ✅ เพิ่ม /me เข้ามาในโซนนี้เพื่อให้ใช้ Token ตรวจสอบได้
 		member.Get("/me", handlers.GetMe)
 		member.Get("/profile", handlers.GetProfile)
 		member.Post("/bet", handlers.PlaceBet)
 		member.Get("/bet/history", handlers.GetHistory)
+
+		// 🔥 เพิ่มใหม่: ระบบแจ้งฝากเงินสำหรับ User
+		member.Post("/deposit", handlers.CreateDeposit)
+		member.Post("/withdraw", handlers.CreateWithdraw) // แจ้งถอน
 	}
 
 	// --- Zone 3: Admin (ต้องมี Token + เป็น Admin) ---
@@ -33,13 +34,16 @@ func SetupRoutes(app *fiber.App) {
 	{
 		admin.Get("/users", handlers.GetUsers)
 		admin.Get("/bets", handlers.GetAllBets)
-		admin.Post("/create-user", handlers.CreateDownline) // ใช้ฟังก์ชัน CreateDownline ที่เราเขียนไว้
-
-		// 🔥 เพิ่มบรรทัดนี้เข้าไปครับ เพื่อรองรับ PATCH /api/v3/admin/users/:id
+		admin.Post("/create-user", handlers.CreateDownline)
 		admin.Patch("/users/:id", handlers.UpdateUser)
-
 		admin.Post("/adjust-balance", handlers.AdjustUserBalance)
 		admin.Post("/settle", handlers.ManualSettlement)
+
+		// 🔥 เพิ่มใหม่: ระบบอนุมัติเงินฝากสำหรับ Admin
+		// ใช้ PUT เพราะเป็นการอัปเดตสถานะ Transaction เดิมที่มีอยู่แล้ว
+		admin.Put("/approve-deposit/:id", handlers.ApproveDeposit)
+		admin.Put("/approve-withdraw/:id", handlers.ApproveWithdraw) // อนุมัติถอน
+		admin.Put("/config/bank", handlers.UpdateAdminBank)
 	}
 
 	// --- Zone 4: Agent ---

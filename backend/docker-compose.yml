@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   db:
@@ -9,7 +8,7 @@ services:
       MYSQL_DATABASE: soccer_db
       MYSQL_ROOT_PASSWORD: admin123
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       # เก็บข้อมูลไว้ในเครื่องเรา (ข้อมูลจะไม่หายเวลาปิด Docker)
       - mysql_data:/var/lib/mysql

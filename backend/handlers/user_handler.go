@@ -21,25 +21,25 @@ func GetBalance(c *fiber.Ctx) error {
 }
 
 func GetProfile(c *fiber.Ctx) error {
-	// สมมติว่าคุณเก็บ user_id ไว้ใน locals หลังจากผ่าน middleware
 	userID := c.Locals("user_id").(uint)
 
 	var user models.User
+	// ดึงข้อมูลทั้งหมด (ไม่ใช้ Select) หรือระบุให้ครบ
 	if err := database.DB.First(&user, userID).Error; err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
 	}
 
-	// ✅ ต้องมั่นใจว่าส่ง balance กลับไปใน JSON
 	return c.JSON(fiber.Map{
 		"id":       user.ID,
 		"username": user.Username,
-		"balance":  user.Credit, // <--- จุดสำคัญ
+		"balance":  user.Credit,
 		"role":     user.Role,
+		"phone":    user.Phone, // ✅ เพิ่มบรรทัดนี้
 	})
 }
 
 func GetMe(c *fiber.Ctx) error {
-	// 1. ดึง UserID จาก Middleware (ที่เก็บไว้ใน c.Locals ตอน Check Token)
+	// 1. ดึง UserID จาก Middleware
 	userID := c.Locals("user_id")
 
 	if userID == nil {
@@ -47,18 +47,20 @@ func GetMe(c *fiber.Ctx) error {
 	}
 
 	var user models.User
-	// 2. ดึงข้อมูลจาก DB (เลือกเฉพาะฟิลด์ที่จำเป็นเพื่อความปลอดภัย)
-	result := database.DB.Select("id", "username", "role", "credit").First(&user, userID)
+	// 2. ดึงข้อมูลจาก DB (เพิ่ม "phone" ลงใน Select)
+	// หมายเหตุ: ตรวจสอบชื่อคอลัมน์ใน DB ของคุณ ปกติจะเป็น "phone" (ตัวพิมพ์เล็ก)
+	result := database.DB.Select("id", "username", "role", "credit", "phone").First(&user, userID)
 
 	if result.Error != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
 	}
 
-	// 3. ส่ง JSON กลับไป (ชื่อ field credit)
+	// 3. ส่ง JSON กลับไป
 	return c.JSON(fiber.Map{
 		"id":       user.ID,
 		"username": user.Username,
 		"role":     user.Role,
-		"credit":   user.Credit, // ✅ ถูกต้อง! ชื่อ field credit ตรงกับที่ frontend รอรับ
+		"phone":    user.Phone, // ✅ เปลี่ยน key เป็น "phone" (ตัวพิมพ์เล็ก) ให้ตรงกับ frontend
+		"credit":   user.Credit,
 	})
 }

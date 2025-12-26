@@ -2,9 +2,8 @@
 import useSWR from "swr";
 import Header from "@/components/Header"; 
 import Link from "next/link";
-import { apiFetch } from "@/lib/api"; // ใช้ apiFetch ตัวเดิมที่เราทำไว้
+import { apiFetch } from "@/lib/api";
 
-// ✅ ปรับ Fetcher ให้แนบ Token อัตโนมัติ
 const fetcher = async (url: string) => {
   const res = await apiFetch(url);
   if (!res.ok) throw new Error("Failed to fetch");
@@ -12,62 +11,55 @@ const fetcher = async (url: string) => {
 };
 
 export default function HistoryPage() {
-  // 1. ดึง data มาก่อน (อย่าเพิ่งเปลี่ยนชื่อเป็น bets ทันทีเพื่อกันสับสน)
-const { data, isLoading, error } = useSWR("/bet/history", fetcher, {
-  refreshInterval: 5000,
-});
+  const { data, isLoading } = useSWR("/bet/history", fetcher, {
+    refreshInterval: 5000, // อัปเดตทุก 5 วินาที เผื่อบอลจบแล้วเงินเด้งทันที
+  });
 
-// 2. ตรวจสอบโครงสร้าง: ถ้า backend ส่ง { "data": [...] } ให้ใช้ data.data 
-// แต่ถ้าส่ง [...] มาเลย ให้ใช้ data เฉพาะถ้ามันเป็น Array
-const bets = Array.isArray(data) ? data : (data?.data || []);
+  const bets = Array.isArray(data) ? data : (data?.data || []);
 
-// 3. คำนวณยอดรวม (ใส่เช็คเพื่อให้แน่ใจว่า bets เป็น array แน่นอน)
-const totalStake = bets.reduce((sum: number, b: any) => sum + (Number(b.amount) || 0), 0);
-
-const totalReturn = bets.reduce((sum: number, b: any) => {
-  const isWin = ['win', 'won', 'win_half', 'won_half'].includes(b.status?.toLowerCase());
-  return isWin ? sum + (Number(b.payout) || 0) : sum;
-}, 0);
+  // คำนวณยอดรวมทั้งหมด
+  const totalStake = bets.reduce((sum: number, b: any) => sum + (Number(b.amount) || 0), 0);
+  const totalReturn = bets.reduce((sum: number, b: any) => sum + (Number(b.payout) || 0), 0);
 
   const getStatusBadge = (status: string) => {
     const s = status?.toLowerCase();
     if (['win', 'won', 'win_half', 'won_half'].includes(s)) 
-      return <span className="bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded-lg text-[10px] font-black border border-emerald-500/20">WINNER</span>;
+      return <span className="bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded-lg text-[9px] sm:text-[10px] font-black border border-emerald-500/20">WINNER</span>;
     if (['lose', 'lost', 'lose_half', 'lost_half'].includes(s)) 
-      return <span className="bg-rose-500/10 text-rose-500 px-2 py-1 rounded-lg text-[10px] font-black border border-rose-500/20">LOST</span>;
+      return <span className="bg-rose-500/10 text-rose-500 px-2 py-1 rounded-lg text-[9px] sm:text-[10px] font-black border border-rose-500/20">LOST</span>;
     if (s === 'draw') 
-      return <span className="bg-slate-500/10 text-slate-400 px-2 py-1 rounded-lg text-[10px] font-black border border-slate-500/20">DRAW</span>;
-    return <span className="bg-amber-500/10 text-amber-500 px-2 py-1 rounded-lg text-[10px] font-black border border-amber-500/20 animate-pulse">PENDING</span>;
+      return <span className="bg-slate-500/10 text-slate-400 px-2 py-1 rounded-lg text-[9px] sm:text-[10px] font-black border border-slate-500/20">DRAW</span>;
+    return <span className="bg-amber-500/10 text-amber-500 px-2 py-1 rounded-lg text-[9px] sm:text-[10px] font-black border border-amber-500/20 animate-pulse">PENDING</span>;
   };
 
   return (
-    <main className="min-h-screen bg-[#0f172a] text-slate-200 pb-20">
+    <main className="min-h-screen bg-[#020617] text-slate-200 pb-24">
       <Header />
 
-      <div className="max-w-xl mx-auto px-4 pt-8">
+      <div className="max-w-2xl mx-auto px-4 pt-6 sm:pt-10">
         {/* Header Section */}
-        <div className="flex justify-between items-end mb-8">
+        <div className="flex justify-between items-center mb-6 sm:mb-8">
           <div>
-            <h1 className="text-3xl font-black text-white italic tracking-tighter uppercase">
-              My <span className="text-yellow-500">History</span>
+            <h1 className="text-2xl sm:text-3xl font-black text-white italic tracking-tighter uppercase leading-none">
+              MY <span className="text-yellow-500">HISTORY</span>
             </h1>
-            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Betting Logs</p>
+            <p className="text-slate-500 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest mt-1">Betting Logs</p>
           </div>
-          <Link href="/" className="text-xs font-bold text-slate-400 hover:text-white transition-colors">
-            &larr; BACK TO LOBBY
+          <Link href="/" className="text-[10px] font-black text-slate-500 hover:text-white transition-colors bg-slate-900 px-3 py-2 rounded-xl border border-slate-800">
+              BACK TO LOBBY
           </Link>
         </div>
 
         {/* 📊 Summary Cards */}
-        <div className="grid grid-cols-2 gap-4 mb-8">
-          <div className="bg-slate-800/40 border border-slate-700/50 p-4 rounded-3xl">
-            <p className="text-[10px] text-slate-500 font-black uppercase mb-1">Total Stake</p>
-            <p className="text-xl font-mono font-black text-white">฿{totalStake.toLocaleString()}</p>
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-8">
+          <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-2xl sm:rounded-3xl shadow-inner">
+            <p className="text-[9px] text-slate-500 font-black uppercase mb-1">Total Stake</p>
+            <p className="text-lg sm:text-2xl font-mono font-black text-white">฿{totalStake.toLocaleString()}</p>
           </div>
-          <div className="bg-slate-800/40 border border-slate-700/50 p-4 rounded-3xl">
-            <p className="text-[10px] text-slate-500 font-black uppercase mb-1">Total Return</p>
-            <p className={`text-xl font-mono font-black ${totalReturn >= totalStake ? 'text-emerald-400' : 'text-white'}`}>
-              ฿{totalReturn.toLocaleString()}
+          <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-2xl sm:rounded-3xl shadow-inner">
+            <p className="text-[9px] text-slate-500 font-black uppercase mb-1">Total Return</p>
+            <p className={`text-lg sm:text-2xl font-mono font-black ${totalReturn > 0 ? 'text-emerald-400' : 'text-white'}`}>
+              ฿{totalReturn.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </p>
           </div>
         </div>
@@ -76,49 +68,65 @@ const totalReturn = bets.reduce((sum: number, b: any) => {
         <div className="space-y-4">
           {isLoading ? (
             <div className="space-y-4">
-              {[1, 2, 3].map(i => <div key={i} className="h-32 bg-slate-800/50 animate-pulse rounded-3xl" />)}
+              {[1, 2, 3].map(i => <div key={i} className="h-28 bg-slate-900/50 animate-pulse rounded-2xl border border-slate-800" />)}
             </div>
           ) : bets?.length > 0 ? (
-            bets.map((bet: any) => (
-              <div key={bet.id} className="bg-[#1e293b] rounded-3xl p-5 border border-slate-800 hover:border-slate-600 transition-all shadow-xl">
+            bets.map((bet: any, index: number) => (
+              <div key={bet.id || index} className="bg-[#0f172a] rounded-2xl sm:rounded-3xl p-4 sm:p-5 border border-slate-800 hover:border-slate-700 transition-all shadow-xl">
+                
+                {/* Card Top: Date & Status */}
                 <div className="flex justify-between items-start mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-slate-800 rounded-2xl flex items-center justify-center text-xl">
-                       ⚽
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-slate-900 rounded-xl flex items-center justify-center text-base sm:text-lg border border-slate-800">
+                        ⚽
                     </div>
                     <div>
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">
-                        {new Date(bet.created_at).toLocaleString('th-TH')}
+                      <p className="text-[8px] sm:text-[10px] text-slate-500 font-bold uppercase">
+                        {/* เช็ค created_at ให้ตรงกับ Model */}
+                        {bet.created_at ? new Date(bet.created_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : 'N/A'}
                       </p>
-                      <h3 className="font-black text-white uppercase italic">{bet.home_team} vs {bet.away_team}</h3>
+                      <h3 className="font-black text-sm sm:text-base text-white uppercase italic leading-tight truncate max-w-[180px] sm:max-w-none">
+                        {bet.home_team || 'Unknown'} <span className="text-slate-600 text-[10px]">vs</span> {bet.away_team || 'Unknown'}
+                      </h3>
                     </div>
                   </div>
                   {getStatusBadge(bet.status)}
                 </div>
 
-                <div className="bg-slate-900/50 rounded-2xl p-4 flex justify-between items-center border border-slate-800/50">
-                  <div>
-                    <p className="text-[9px] text-slate-500 font-black uppercase">Your Pick</p>
-                    <p className="font-bold text-yellow-500">{bet.pick} <span className="text-white">@{bet.odds}</span></p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[9px] text-slate-500 font-black uppercase">Stake / Payout</p>
-                    <p className="font-mono font-bold">
-                      <span className="text-slate-400">฿{bet.amount}</span> 
-                      <span className="mx-2">→</span>
-                      <span className={bet.status === 'win' ? 'text-emerald-400' : 'text-white'}>
-                        ฿{bet.payout?.toFixed(2)}
-                      </span>
-                    </p>
+                {/* Card Detail Area */}
+                <div className="bg-[#020617]/50 rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-slate-800/50">
+                  <div className="flex justify-between items-center gap-4">
+                    <div className="min-w-0">
+                      <p className="text-[8px] sm:text-[9px] text-slate-600 font-black uppercase mb-0.5">Your Pick</p>
+                      <p className="font-bold text-xs sm:text-sm text-yellow-500 truncate">
+                        {bet.pick} 
+                        <span className="text-white ml-1">
+                          ({bet.hdp > 0 ? `+${bet.hdp}` : bet.hdp})
+                        </span>
+                        <span className="text-slate-400 font-mono text-[10px] sm:text-xs ml-1">@{bet.odds}</span>
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-[8px] sm:text-[9px] text-slate-600 font-black uppercase mb-0.5">Stake / Payout</p>
+                      <div className="font-mono font-bold text-xs sm:text-sm flex items-center justify-end gap-1.5">
+                        <span className="text-slate-500">฿{bet.amount}</span> 
+                        <span className="text-slate-700">→</span>
+                        <span className={bet.payout > 0 ? 'text-emerald-400' : 'text-white'}>
+                          ฿{bet.payout ? bet.payout.toLocaleString(undefined, {minimumFractionDigits: 2}) : '0.00'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
+
               </div>
             ))
           ) : (
-            <div className="text-center py-20 bg-slate-800/20 rounded-[40px] border-2 border-dashed border-slate-800">
-               <p className="text-slate-500 font-bold uppercase tracking-widest text-sm">No bets found</p>
-               <Link href="/" className="mt-4 inline-block bg-yellow-500 text-black px-6 py-2 rounded-full font-black text-xs uppercase hover:bg-yellow-400 transition-all">
-                  Start Betting
+            <div className="text-center py-20 bg-slate-900/20 rounded-[2.5rem] border-2 border-dashed border-slate-800/50 mx-4">
+               <div className="text-4xl mb-4 opacity-20">📝</div>
+               <p className="text-slate-500 font-black uppercase tracking-widest text-[10px]">No transaction history</p>
+               <Link href="/" className="mt-5 inline-block bg-yellow-500 text-black px-8 py-2.5 rounded-full font-black text-[10px] uppercase hover:bg-yellow-400 transition-all shadow-lg shadow-yellow-500/10">
+                 Start Betting
                </Link>
             </div>
           )}
