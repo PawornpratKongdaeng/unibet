@@ -1,0 +1,452 @@
+"use client";
+import { useState, useEffect, useCallback } from "react";
+
+// --- Main Admin Dashboard ---
+export default function AdminDashboard() {
+  const [activeTab, setActiveTab] = useState("users");
+  const [adminInfo, setAdminInfo] = useState<any>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // State สำหรับข้อมูลจาก Backend
+  const [users, setUsers] = useState<any[]>([]);
+  const [bets, setBets] = useState<any[]>([]);
+
+  // ฟังก์ชันดึงข้อมูล (ห่อด้วย useCallback เพื่อให้ส่งลงไปใน props ได้อย่างเสถียร)
+  const initDashboard = useCallback(async () => {
+    const token = localStorage.getItem("token");
+    const fetchData = async (endpoint: string) => {
+      const response = await fetch(`http://localhost:8080/api/v3/admin/${endpoint}`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      });
+      if (!response.ok) throw new Error("Unauthorized or Server Error");
+      return response.json();
+    };
+
+    try {
+      // ไม่ต้องเซ็ต isLoading เป็น true ทุกครั้งที่ refresh เพื่อไม่ให้หน้าจอขาว (Silent Refresh)
+      const [adminData, usersData, betsData] = await Promise.all([
+        fetch("http://localhost:8080/api/v3/me", {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+          }
+        }).then(res => res.json()),
+        fetchData("users"),
+        fetchData("bets")
+      ]);
+      setAdminInfo(adminData);
+      setUsers(usersData);
+      setBets(betsData);
+    } catch (err) {
+      console.error("Fetch Error:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    initDashboard();
+  }, [initDashboard]);
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    window.location.href = "/login";
+  };
+
+ const renderContent = () => {
+  switch (activeTab) {
+    case "overview":
+      return <DashboardOverview users={users} bets={bets} onNavigate={setActiveTab} />;
+    case "users": 
+      return <UserManagementDemo users={users} onRefresh={initDashboard} />;
+    case "bets": 
+      return <AllBetsReportDemo bets={bets} />;
+    case "settings":
+      return <SettingsDemo />;
+    // เพิ่มเคสใหม่ๆ ตามที่เพิ่มใน DashboardOverview
+    case "matches":
+      return <div className="text-white p-10 bg-zinc-900 rounded-3xl border border-zinc-800">Match Management (Coming Soon...)</div>;
+    case "agent":
+      return <div className="text-white p-10 bg-zinc-900 rounded-3xl border border-zinc-800">Agent System (Coming Soon...)</div>;
+    default: 
+      return <DashboardOverview users={users} bets={bets} onNavigate={setActiveTab} />;
+  }
+};
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="w-16 h-16 border-4 border-zinc-800 border-t-white rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-black text-white flex relative overflow-hidden">
+      {/* Sidebar & Header (ใช้โค้ดเดิมที่ปรับปรุงแล้ว) */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-80 bg-zinc-950/95 backdrop-blur-xl border-r border-zinc-800 transform transition-all duration-500 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0 lg:static shadow-2xl`}>
+        <div className="h-full flex flex-col p-8">
+          <div className="mb-12 flex items-center gap-4">
+            <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center font-black text-black text-2xl">A</div>
+            <div>
+              <h1 className="text-2xl font-black text-white leading-none">ADMIN</h1>
+              <p className="text-xs text-zinc-500 font-bold uppercase mt-1">Control Panel</p>
+            </div>
+          </div>
+          <nav className="flex-1 space-y-3">
+            <NavItem icon={<UsersIcon />} label="จัดการสมาชิก" sublabel="User Management" active={activeTab === "users"} onClick={() => { setActiveTab("users"); setIsSidebarOpen(false); }} />
+            <NavItem icon={<ChartIcon />} label="รายงานเดิมพัน" sublabel="Betting Reports" active={activeTab === "bets"} onClick={() => { setActiveTab("bets"); setIsSidebarOpen(false); }} />
+            <NavItem icon={<SettingsIcon />} label="ตั้งค่าระบบ" sublabel="Settings" active={activeTab === "settings"} onClick={() => { setActiveTab("settings"); setIsSidebarOpen(false); }} />
+          </nav>
+          <button onClick={handleLogout} className="w-full mt-auto flex items-center justify-center gap-3 p-5 text-sm font-bold text-zinc-400 hover:text-white bg-zinc-900/50 hover:bg-zinc-800 rounded-2xl transition-all border border-zinc-800">
+            <LogoutIcon /> ออกจากระบบ
+          </button>
+        </div>
+      </aside>
+
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="h-24 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-40 flex items-center px-6 lg:px-10">
+          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="lg:hidden p-3 text-white mr-4"><MenuIcon /></button>
+          <div className="flex-1">
+            <h2 className="text-2xl font-black text-white uppercase tracking-tight">
+              {activeTab === 'users' ? 'User Management' : activeTab === 'bets' ? 'Betting Reports' : 'System Settings'}
+            </h2>
+          </div>
+          <div className="flex items-center gap-5 text-right">
+            <div className="hidden sm:block">
+              <p className="text-xs font-black text-zinc-500 uppercase">Administrator</p>
+              <p className="text-base font-bold text-white">{adminInfo?.username}</p>
+            </div>
+            <div className="w-14 h-14 bg-zinc-900 rounded-2xl border-2 border-zinc-800 flex items-center justify-center shadow-lg"><UserIcon /></div>
+          </div>
+        </header>
+
+        <main className="flex-1 p-6 lg:p-10 overflow-auto">
+          <div className="max-w-7xl mx-auto">
+            {renderContent()}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+// --- Sub-Component: User Management ---
+function UserManagementDemo({ users, onRefresh }: { users: any[], onRefresh: () => void }) {
+  const [editingUser, setEditingUser] = useState<any>(null);
+
+  const handleUpdateUser = async (updatedData: any) => {
+    // ... โค้ด handleUpdateUser เดิม ...
+    const token = localStorage.getItem("token");
+    try {
+      const response = await fetch(`http://localhost:8080/api/v3/admin/users/${updatedData.id}`, {
+        method: "PATCH",
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ balance: Number(updatedData.balance), role: updatedData.role })
+      });
+      if (response.ok) { setEditingUser(null); onRefresh(); }
+    } catch (err) { console.error(err); }
+  };
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      {/* Header Section */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h3 className="text-lg font-bold text-zinc-400 uppercase tracking-widest">Total Users</h3>
+          <p className="text-4xl font-black text-white leading-none">{users.length}</p>
+        </div>
+        <button className="w-full sm:w-auto px-6 py-3 bg-white text-black font-bold rounded-2xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2">
+          <PlusIcon /> Add User
+        </button>
+      </div>
+
+      {/* --- Desktop Table View (ซ่อนในมือถือ) --- */}
+      <div className="hidden md:block bg-zinc-950/50 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl">
+        <table className="w-full text-left">
+          <thead className="bg-zinc-900/50 border-b border-zinc-800">
+            <tr className="text-zinc-500 text-[10px] font-black uppercase">
+              <th className="px-8 py-5">Username</th>
+              <th className="px-8 py-5">Role</th>
+              <th className="px-8 py-5">Balance</th>
+              <th className="px-8 py-5 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-800 text-sm">
+{users.map((user) => (
+   <tr key={user.id || user.ID || user.username} className="hover:bg-zinc-900/30 transition-colors">
+                <td className="px-8 py-5 font-bold text-white text-base">{user.username}</td>
+                <td className="px-8 py-5">
+                  <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase ${user.role === 'admin' ? 'bg-white text-black' : 'bg-zinc-800 text-zinc-400'}`}>
+                    {user.role}
+                  </span>
+                </td>
+                <td className="px-8 py-5 font-black text-green-400 text-base">฿{user.balance?.toLocaleString()}</td>
+                <td className="px-8 py-5 text-right">
+                  <button onClick={() => setEditingUser(user)} className="px-5 py-2.5 bg-zinc-900 hover:bg-white hover:text-black border border-zinc-800 rounded-xl font-bold transition-all">
+                    Edit
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* --- Mobile Card View (แสดงเฉพาะในมือถือ) --- */}
+      <div className="grid grid-cols-1 gap-4 md:hidden">
+{users.map((user) => (
+    <div key={user.id || user.ID || user.username} className="bg-zinc-900/50 border border-zinc-800 p-5 rounded-3xl space-y-4 shadow-lg">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-[10px] font-black text-zinc-500 uppercase mb-1">Username</p>
+                <h4 className="text-lg font-bold text-white">{user.username}</h4>
+              </div>
+              <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase ${user.role === 'admin' ? 'bg-white text-black' : 'bg-zinc-800 text-zinc-400'}`}>
+                {user.role}
+              </span>
+            </div>
+            
+            <div>
+              <p className="text-[10px] font-black text-zinc-500 uppercase mb-1">Balance</p>
+              <p className="text-xl font-black text-green-400">฿{user.balance?.toLocaleString()}</p>
+            </div>
+
+            <button 
+              onClick={() => setEditingUser(user)} 
+              className="w-full py-3 bg-white/5 hover:bg-white hover:text-black border border-white/10 text-white font-bold rounded-2xl transition-all"
+            >
+              Edit User Details
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Modal ปรับความกว้างให้รองรับมือถือ */}
+      {editingUser && <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSave={handleUpdateUser} />}
+    </div>
+  );
+}
+
+// --- Sub-Component: Edit Modal ---
+function EditUserModal({ user, onClose, onSave }: any) {
+  const [balance, setBalance] = useState(user.balance);
+  const [role, setRole] = useState(user.role);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-zinc-950 border border-zinc-800 w-full max-w-md rounded-3xl p-8 shadow-2xl">
+        <h4 className="text-xl font-black text-white uppercase mb-6">Edit User: {user.username}</h4>
+        <div className="space-y-4">
+          <div>
+            <label className="text-[10px] font-black text-zinc-500 uppercase block mb-1">Update Balance</label>
+            <input type="number" value={balance} onChange={(e) => setBalance(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-white outline-none focus:border-white transition-colors" />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-zinc-500 uppercase block mb-1">Role</label>
+            <select value={role} onChange={(e) => setRole(e.target.value)} className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-white outline-none focus:border-white transition-colors appearance-none">
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div className="pt-4 flex gap-3">
+            <button onClick={onClose} className="flex-1 px-6 py-3 bg-zinc-900 text-white font-bold rounded-xl hover:bg-zinc-800 transition-all">Cancel</button>
+            <button onClick={() => onSave({ id: user.ID, balance, role })} className="flex-1 px-6 py-3 bg-white text-black font-bold rounded-xl hover:scale-105 transition-all">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Sub-Component: Stats & Others (ย่อ) ---
+function AllBetsReportDemo({ bets }: { bets: any[] }) {
+  const totalWagered = bets.reduce((sum, b) => sum + (b.amount || 0), 0);
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <StatCard title="Total Bets" value={bets.length.toString()} icon={<DiceIcon />} />
+        <StatCard title="Total Wagered" value={`฿${totalWagered.toLocaleString()}`} icon={<DollarIcon />} />
+        <StatCard title="Win/Loss" value="฿0" icon={<TrendingIcon />} />
+      </div>
+      {/* ตารางบิลเดิมพันเหมือนเดิม... */}
+    </div>
+  );
+}
+
+function SettingsDemo() {
+  return (
+    <div className="bg-zinc-950/50 backdrop-blur-xl border border-zinc-800 rounded-2xl p-8">
+      <h3 className="text-xl font-bold text-white mb-6">System Settings</h3>
+      <SettingItem label="Maintenance Mode" description="ปิดปรับปรุงระบบ" />
+    </div>
+  );
+}
+
+// --- Reusable UI Elements ---
+function NavItem({ icon, label, sublabel, active, onClick }: any) {
+  return (
+    <button onClick={onClick} className={`relative w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all ${active ? "bg-white text-black scale-105" : "text-zinc-400 hover:bg-zinc-900"}`}>
+      <span>{icon}</span>
+      <div className="flex-1 text-left">
+        <div className="font-bold">{label}</div>
+        <div className={`text-[10px] font-bold uppercase tracking-widest ${active ? 'text-zinc-600' : 'text-zinc-500'}`}>{sublabel}</div>
+      </div>
+    </button>
+  );
+}
+
+function StatCard({ title, value, icon }: any) {
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-xl">
+      <div className="flex justify-between items-center mb-4"><div className="text-white">{icon}</div></div>
+      <p className="text-zinc-500 text-xs font-black uppercase tracking-widest">{title}</p>
+      <p className="text-3xl font-black text-white">{value}</p>
+    </div>
+  );
+}
+
+function SettingItem({ label, description }: any) {
+  const [enabled, setEnabled] = useState(false);
+  return (
+    <div className="flex items-center justify-between p-4 bg-zinc-900/50 rounded-xl border border-zinc-800">
+      <div><p className="font-bold text-white">{label}</p><p className="text-sm text-zinc-500">{description}</p></div>
+      <button onClick={() => setEnabled(!enabled)} className={`relative w-14 h-8 rounded-full transition-colors ${enabled ? 'bg-white' : 'bg-zinc-800'}`}>
+        <div className={`absolute top-1 left-1 w-6 h-6 rounded-full transition-all ${enabled ? 'translate-x-6 bg-black' : 'bg-zinc-600'}`}></div>
+      </button>
+    </div>
+  );
+}
+
+// Icons (Copy from previous responses...)
+const UsersIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>;
+const ChartIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>;
+const SettingsIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>;
+const LogoutIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>;
+const MenuIcon = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>;
+const UserIcon = () => <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>;
+const PlusIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>;
+const DiceIcon = () => <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5" /></svg>;
+const DollarIcon = () => <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+const TrendingIcon = () => <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>;
+
+function DashboardOverview({ users, bets, onNavigate }: { users: any[], bets: any[], onNavigate: (tab: string) => void }) {
+  const totalWagered = bets.reduce((sum, b) => sum + (b.amount || 0), 0);
+  
+  // เพิ่มข้อมูลช่อง (Cards) ตามหน้าที่จริงใน Backend
+  const functions = [
+    {
+      title: "User Management",
+      description: "จัดการสมาชิกและยอดเงิน",
+      value: users.length,
+      unit: "Users",
+      icon: <UsersIcon />,
+      color: "from-blue-500/20",
+      target: "users"
+    },
+    {
+      title: "Betting Reports",
+      description: "ประวัติการเดิมพันทั้งหมด",
+      value: bets.length,
+      unit: "Tickets",
+      icon: <DiceIcon />,
+      color: "from-purple-500/20",
+      target: "bets"
+    },
+    {
+      title: "Match Schedule",
+      description: "จัดการตารางการแข่งขัน",
+      value: "LIVE",
+      unit: "Status",
+      icon: <TrophyIcon />,
+      color: "from-amber-500/20",
+      target: "matches" // เพิ่ม Tab นี้ในอนาคตได้
+    },
+    {
+      title: "Financial Summary",
+      description: "สรุปยอดเงินหมุนเวียนรวม",
+      value: `฿${totalWagered.toLocaleString()}`,
+      unit: "Turnover",
+      icon: <DollarIcon />,
+      color: "from-green-500/20",
+      target: "bets"
+    },
+    {
+      title: "Agent Control",
+      description: "จัดการสายงานและเอเย่นต์",
+      value: "Active",
+      unit: "System",
+      icon: <AgentIcon />,
+      color: "from-rose-500/20",
+      target: "agent" // เพิ่ม Tab นี้ในอนาคตได้
+    },
+    {
+      title: "System Settings",
+      description: "ตั้งค่าระบบและ Maintenance",
+      value: "Normal",
+      unit: "Status",
+      icon: <SettingsIcon />,
+      color: "from-zinc-500/20",
+      target: "settings"
+    }
+  ];
+
+  return (
+    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-6 duration-700">
+      {/* Welcome Header */}
+      <div className="flex flex-col gap-2">
+        <h2 className="text-4xl font-black text-white tracking-tighter uppercase">Admin Console</h2>
+        <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+            <p className="text-zinc-500 font-bold uppercase text-xs tracking-widest">System Online & Ready</p>
+        </div>
+      </div>
+
+      {/* Grid Layout: ปรับเป็น 3 คอลัมน์ในจอใหญ่เพื่อให้ช่องดูใหญ่และกดง่าย */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {functions.map((item, idx) => (
+          <div 
+            key={idx}
+            onClick={() => onNavigate(item.target)}
+            className="group relative overflow-hidden bg-zinc-900/40 border border-zinc-800 p-8 rounded-[2.5rem] cursor-pointer hover:border-white/30 transition-all duration-500 hover:shadow-[0_20px_50px_rgba(0,0,0,0.5)]"
+          >
+            {/* Background Glow Effect */}
+            <div className={`absolute inset-0 bg-gradient-to-br ${item.color} to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500`}></div>
+            
+            <div className="relative z-10 flex flex-col h-full">
+              <div className="flex justify-between items-start mb-10">
+                <div className="w-16 h-16 bg-zinc-950 rounded-2xl border border-zinc-800 flex items-center justify-center text-white group-hover:scale-110 group-hover:border-white/20 transition-all duration-500">
+                  {item.icon}
+                </div>
+                <div className="p-2 rounded-full bg-zinc-800/50 text-zinc-500 group-hover:text-white group-hover:bg-white/10 transition-all">
+                  <ArrowIcon />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <h4 className="text-white text-xl font-bold tracking-tight">{item.title}</h4>
+                <p className="text-zinc-500 text-sm font-medium">{item.description}</p>
+              </div>
+
+              <div className="mt-8 flex items-baseline gap-2">
+                <span className="text-4xl font-black text-white tracking-tighter group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-zinc-500 transition-all duration-500">
+                  {item.value}
+                </span>
+                <span className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">{item.unit}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// --- Icons เพิ่มเติมเพื่อให้ครบทุกหน้า ---
+const TrophyIcon = () => <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9-9c1.657 0 3 4.03 3 9s-1.343 9-3 9m0-18c-1.657 0-3 4.03-3 9s1.343 9 3 9" /></svg>;
+const AgentIcon = () => <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>;
+const ArrowIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>;
