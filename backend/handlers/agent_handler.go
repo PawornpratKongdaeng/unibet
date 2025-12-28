@@ -129,8 +129,8 @@ func TransferCredit(c *fiber.Ctx) error {
 
 		// 7. บันทึก Transaction Log (ปรับให้เข้ากับ Model ใหม่)
 		log := models.Transaction{
-			UserID:        sender.ID,
-			TargetID:      &receiver.ID, // ใช้ Pointer ตาม Model
+			UserID: sender.ID,
+			//TargetID:      &receiver.ID, // ใช้ Pointer ตาม Model
 			Amount:        body.Amount,
 			Type:          "transfer",
 			Status:        "success",

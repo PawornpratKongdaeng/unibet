@@ -5,10 +5,16 @@ import (
 )
 
 type BetSlip struct {
-	ID      uint   `gorm:"primaryKey" json:"id"`
-	UserID  uint   `json:"user_id"`
-	MatchID string `json:"match_id"`
-	// เพิ่มฟิลด์เหล่านี้เพื่อแสดงผลหน้า History
+	ID     uint `gorm:"primaryKey" json:"id"`
+	UserID uint `json:"user_id"`
+	// ✅ เปลี่ยนจาก string เป็น uint ให้ตรงกับ ID ของตาราง Match
+	MatchID uint `json:"match_id"`
+
+	// ✅ กำหนด relationship ให้ชัดเจน
+	// foreignKey คือฟิลด์ใน BetSlip (MatchID)
+	// references คือฟิลด์ใน Match (ID)
+	Match Match `gorm:"foreignKey:MatchID;references:ID" json:"match"`
+
 	HomeTeam  string    `json:"home_team"`
 	HomeLogo  string    `json:"home_logo"`
 	AwayLogo  string    `json:"away_logo"`

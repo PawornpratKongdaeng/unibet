@@ -15,50 +15,46 @@ import (
 
 var jwtKey = []byte("SECRET_KEY_NA_KRUB")
 
-// ฟังก์ชันสำหรับสุ่มตัวเลข 5 หลัก
 func generateUsername() string {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	randomNum := r.Intn(90000) + 10000 // สุ่ม 10000 - 99999
+	randomNum := r.Intn(90000) + 10000
 	return fmt.Sprintf("unibet%d", randomNum)
 }
+
 func IsAuthenticated(c *fiber.Ctx) error {
-	// 1. ดึง Token จาก Header "Authorization"
 	authHeader := c.Get("Authorization")
 	if authHeader == "" {
-		return c.Status(401).JSON(fiber.Map{"error": "กรุณาเข้าสู่ระบบ (Missing Token)"})
+		return c.Status(401).JSON(fiber.Map{"error": "กรุณาเข้าสู่ระบบ"})
 	}
 
-	// รูปแบบปกติคือ "Bearer <token>" เราต้องตัดคำว่า Bearer ออก
 	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-
-	// 2. ตรวจสอบความถูกต้องของ Token
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		return jwtKey, nil
 	})
 
 	if err != nil || !token.Valid {
-		return c.Status(401).JSON(fiber.Map{"error": "Token ไม่ถูกต้องหรือหมดอายุ"})
+		return c.Status(401).JSON(fiber.Map{"error": "Session หมดอายุ"})
 	}
 
-	// 3. ดึงข้อมูล user_id และ role จาก Token เก็บไว้ใน Context (Locals)
-	// เพื่อให้ Handler อื่นๆ เรียกใช้ได้ง่ายๆ
 	claims := token.Claims.(jwt.MapClaims)
-	c.Locals("user_id", claims["user_id"])
+
+	// ปรับตรงนี้: แปลงจาก float64 (JWT default) ให้เป็น uint ทันที
+	userID := uint(claims["user_id"].(float64))
+
+	c.Locals("user_id", userID)
 	c.Locals("role", claims["role"])
 
-	return c.Next() // ผ่านด่านได้! ไปทำหน้าที่ใน Handler ถัดไป
+	return c.Next()
 }
 
-// Register - รองรับข้อมูล 2 ขั้นตอนจาก Frontend
 func Register(c *fiber.Ctx) error {
-	// ปรับปรุง Struct เพื่อรับข้อมูลธนาคารและชื่อจริง
 	type RegisterRequest struct {
 		Phone       string `json:"phone"`
 		Password    string `json:"password"`
-		FirstName   string `json:"first_name"`   // เพิ่มใหม่
-		LastName    string `json:"last_name"`    // เพิ่มใหม่
-		BankName    string `json:"bank_name"`    // เพิ่มใหม่
-		BankAccount string `json:"bank_account"` // เพิ่มใหม่
+		FirstName   string `json:"first_name"`
+		LastName    string `json:"last_name"`
+		BankName    string `json:"bank_name"`
+		BankAccount string `json:"bank_account"`
 	}
 
 	var body RegisterRequest
@@ -66,21 +62,22 @@ func Register(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
 	}
 
-	// 1. ตรวจสอบเบอร์โทรซ้ำ
-	var existingUser models.User
-	database.DB.Where("phone = ?", body.Phone).First(&existingUser)
-	if existingUser.ID != 0 {
+	// ใช้ .Find() แทน .First() เพื่อไม่ให้ GORM พ่น Log "Record Not Found" สีแดงกวนใจ
+	var users []models.User
+
+	// 1. ตรวจสอบเบอร์โทร
+	database.DB.Where("phone = ?", body.Phone).Limit(1).Find(&users)
+	if len(users) > 0 {
 		return c.Status(400).JSON(fiber.Map{"error": "เบอร์โทรศัพท์นี้ถูกใช้งานแล้ว"})
 	}
 
-	// 2. ตรวจสอบเลขบัญชีซ้ำ (ป้องกันการสมัครหลายไอดีเพื่อปั๊มโปรโมชั่น)
-	var existingBank models.User
-	database.DB.Where("bank_account = ?", body.BankAccount).First(&existingBank)
-	if existingBank.ID != 0 {
+	// 2. ตรวจสอบเลขบัญชี
+	database.DB.Where("bank_account = ?", body.BankAccount).Limit(1).Find(&users)
+	if len(users) > 0 {
 		return c.Status(400).JSON(fiber.Map{"error": "เลขบัญชีธนาคารนี้มีอยู่ในระบบแล้ว"})
 	}
 
-	// 3. Gen Username จนกว่าจะไม่ซ้ำ
+	// 3. Gen Username
 	var finalUsername string
 	for {
 		tempName := generateUsername()
@@ -92,18 +89,16 @@ func Register(c *fiber.Ctx) error {
 		}
 	}
 
-	// 4. Hash Password
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(body.Password), 14)
 
-	// 5. บันทึกข้อมูลลงฐานข้อมูล
 	user := models.User{
 		Username:    finalUsername,
 		Password:    string(hashedPassword),
 		Phone:       body.Phone,
-		FirstName:   body.FirstName,   // ต้องมีฟิลด์นี้ใน models.User
-		LastName:    body.LastName,    // ต้องมีฟิลด์นี้ใน models.User
-		BankName:    body.BankName,    // ต้องมีฟิลด์นี้ใน models.User
-		BankAccount: body.BankAccount, // ต้องมีฟิลด์นี้ใน models.User
+		FirstName:   body.FirstName,
+		LastName:    body.LastName,
+		BankName:    body.BankName,
+		BankAccount: body.BankAccount,
 		Role:        "user",
 		Credit:      0,
 	}
@@ -112,27 +107,22 @@ func Register(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถสมัครสมาชิกได้"})
 	}
 
-	return c.JSON(fiber.Map{
-		"message":  "สมัครสมาชิกสำเร็จ",
-		"username": finalUsername,
-	})
+	return c.JSON(fiber.Map{"message": "สมัครสำเร็จ", "username": finalUsername})
 }
 
-// Login
 func Login(c *fiber.Ctx) error {
 	var body struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
 	if err := c.BodyParser(&body); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Request ผิดพลาด"})
+		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
 	}
 
 	var user models.User
-	database.DB.Where("username = ?", body.Username).First(&user)
-
-	if user.ID == 0 {
-		return c.Status(401).JSON(fiber.Map{"error": "ไม่พบผู้ใช้นี้"})
+	// ใช้ Find เพื่อเช็คว่ามีตัวตนไหมโดยไม่พ่น Error Log
+	if err := database.DB.Where("username = ?", body.Username).Limit(1).Find(&user).Error; err != nil || user.ID == 0 {
+		return c.Status(401).JSON(fiber.Map{"error": "ไม่พบผู้ใช้นี้ หรือรหัสผ่านผิด"})
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password)); err != nil {
@@ -153,9 +143,6 @@ func Login(c *fiber.Ctx) error {
 			"id":       user.ID,
 			"username": user.Username,
 			"role":     user.Role,
-			"credit":   user.Credit,
-			"phone":    user.Phone,
-			"bank":     user.BankName,
 		},
 	})
 }

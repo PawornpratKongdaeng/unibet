@@ -30,9 +30,14 @@ export default function BetSlipModal({ selectedBet, onClose, onConfirm }: BetSli
   const [amount, setAmount] = useState<string>("50");
   const { balance } = useWallet();
 
+  // ✅ แก้ไขสูตรคำนวณที่นี่
   const odds = parseFloat(String(selectedBet?.odds || "0"));
   const numAmount = parseFloat(amount || "0");
-  const potentialWin = (numAmount * odds).toFixed(2);
+  
+  // คำนวณแบบเปอร์เซ็นต์: Stake + (Stake * (Odds/100))
+  const profit = numAmount * (odds / 100);
+  const totalReturn = numAmount + profit;
+  const potentialWin = totalReturn.toFixed(2);
   
   const isBalanceEnough = balance >= numAmount;
   const isMinAmount = numAmount >= 50;
@@ -53,10 +58,7 @@ export default function BetSlipModal({ selectedBet, onClose, onConfirm }: BetSli
   };
 
   return (
-    // ปรับการจัดวาง: มือถือชิดล่าง (items-end) จอใหญ่เข้ากลาง (sm:items-center)
     <div className="fixed inset-0 bg-[#020617]/90 flex items-end sm:items-center justify-center z-[100] backdrop-blur-md px-0 sm:px-4">
-      
-      {/* Overlay สำหรับคลิกปิด (Desktop เท่านั้น) */}
       <div className="absolute inset-0 cursor-pointer hidden sm:block" onClick={onClose} />
 
       <div className="bg-[#0f172a] w-full sm:max-w-md p-6 sm:p-8 
@@ -64,10 +66,8 @@ export default function BetSlipModal({ selectedBet, onClose, onConfirm }: BetSli
                       border-t sm:border border-slate-800 relative 
                       max-h-[95vh] overflow-y-auto shadow-2xl transition-all">
         
-        {/* Handle bar สำหรับมือถือ (ตกแต่งให้ดูเหมือน Bottom Sheet) */}
         <div className="w-12 h-1 bg-slate-800 rounded-full mx-auto mb-6 sm:hidden" />
 
-        {/* Header & Balance */}
         <div className="flex justify-between items-start mb-6">
           <div>
             <h3 className="text-xl sm:text-2xl font-black text-white italic uppercase tracking-tighter leading-none">Confirm Bet</h3>
@@ -83,7 +83,6 @@ export default function BetSlipModal({ selectedBet, onClose, onConfirm }: BetSli
           </div>
         </div>
 
-        {/* Match Details */}
         <div className="bg-[#1e293b]/50 border border-slate-800 p-4 sm:p-5 rounded-2xl sm:rounded-3xl mb-6">
           <div className="flex justify-between items-center text-[9px] sm:text-[10px] font-black text-slate-400 uppercase mb-3 gap-2">
              <span className="truncate flex-1">{selectedBet?.match?.home_team}</span>
@@ -97,11 +96,11 @@ export default function BetSlipModal({ selectedBet, onClose, onConfirm }: BetSli
                 {selectedBet?.type} {selectedBet?.hdp !== "0" ? `(${selectedBet?.hdp})` : ''}
               </span>
             </div>
+            {/* แสดงค่าน้ำแบบมี @ นำหน้า */}
             <p className="text-2xl sm:text-3xl font-black text-green-400 font-mono italic leading-none ml-2">@{selectedBet?.odds}</p>
           </div>
         </div>
 
-        {/* Input Area */}
         <div className="space-y-4 mb-6">
           <div>
             <label className="text-[9px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 block ml-1">Stake Amount (Min 50)</label>
@@ -109,7 +108,7 @@ export default function BetSlipModal({ selectedBet, onClose, onConfirm }: BetSli
               <span className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-lg">฿</span>
               <input
                 type="number"
-                inputMode="decimal" // คีย์บอร์ดตัวเลขบนมือถือ
+                inputMode="decimal"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 className={`w-full bg-[#020617] border ${!isBalanceEnough ? 'border-red-500' : 'border-slate-800'} rounded-xl sm:rounded-2xl py-4 sm:py-5 pl-12 pr-4 text-xl sm:text-2xl font-black text-white outline-none focus:border-yellow-500 transition-all`}
@@ -134,11 +133,13 @@ export default function BetSlipModal({ selectedBet, onClose, onConfirm }: BetSli
           </div>
         </div>
 
-        {/* Est. Return & Confirm Button */}
         <div className="space-y-4">
           <div className="flex justify-between items-center px-4 bg-slate-900/50 py-3 rounded-2xl border border-slate-800/50">
             <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-widest">Est. Return:</span>
-            <span className="text-xl sm:text-2xl font-black text-yellow-500 italic">฿{parseFloat(potentialWin).toLocaleString()}</span>
+            {/* ✅ ใช้ค่าที่คำนวณใหม่ และจัดรูปแบบตัวเลขให้มีคอมม่า */}
+            <span className="text-xl sm:text-2xl font-black text-yellow-500 italic">
+              ฿{Number(potentialWin).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+            </span>
           </div>
 
           <button
@@ -154,7 +155,6 @@ export default function BetSlipModal({ selectedBet, onClose, onConfirm }: BetSli
           </button>
         </div>
 
-        {/* ปุ่มยกเลิก (ทำให้เด่นขึ้นเล็กน้อยบนมือถือแต่ยังดูเป็น secondary) */}
         <button 
           onClick={onClose} 
           className="w-full text-slate-500 text-[10px] font-black uppercase py-4 sm:py-2 hover:text-slate-300 transition-colors"

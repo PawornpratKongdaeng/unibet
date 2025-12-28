@@ -34,50 +34,35 @@ type AdjustBalanceRequest struct {
 
 // 4. ฟังก์ชันปรับเงิน (ใช้ตัวนี้ตัวเดียวสำหรับปุ่ม ฝาก/ถอน)
 func AdjustUserBalance(c *fiber.Ctx) error {
-	var req AdjustBalanceRequest
+	// 1. รับ ID จาก URL (:id)
+	id := c.Params("id")
+	if id == "" || id == "0" || id == "undefined" {
+		return c.Status(400).JSON(fiber.Map{"error": "ID ไม่ถูกต้อง"})
+	}
+
+	// 2. รับ Amount จาก Body
+	type Request struct {
+		Amount float64 `json:"amount" xml:"amount" form:"amount"`
+	}
+	var req Request
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
+		return c.Status(400).JSON(fiber.Map{"error": "รูปแบบจำนวนเงินไม่ถูกต้อง"})
 	}
 
-	// ใช้ Database Transaction เพื่อความปลอดภัยของข้อมูลการเงิน
-	err := database.DB.Transaction(func(tx *gorm.DB) error {
-		var user models.User
-		if err := tx.First(&user, req.UserID).Error; err != nil {
-			return fiber.NewError(404, "ไม่พบผู้ใช้งานนี้ในระบบ")
-		}
-
-		// คำนวณยอดใหม่
-		newCredit := user.Credit + req.Amount
-
-		// ป้องกันยอดติดลบ
-		if newCredit < 0 {
-			return fiber.NewError(400, "เครดิตคงเหลือไม่เพียงพอสำหรับการหักออก")
-		}
-
-		// อัปเดตยอดเงิน
-		if err := tx.Model(&user).Update("credit", newCredit).Error; err != nil {
-			return err
-		}
-
-		// ✅ บันทึก Log การปรับเงินลงตาราง Transaction (แนะนำให้ทำ)
-		// transaction := models.Transaction{
-		// 	UserID: user.ID,
-		// 	Amount: req.Amount,
-		// 	Type:   "adjustment",
-		// 	Status: "approved",
-		// }
-		// tx.Create(&transaction)
-
-		return nil
-	})
-
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	// 3. อัปเดต DB
+	var user models.User
+	if err := database.DB.First(&user, id).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "ไม่พบผู้ใช้"})
 	}
 
-	return c.JSON(fiber.Map{
-		"message": "ปรับปรุงยอดเงินสำเร็จ",
-	})
+	newCredit := user.Credit + req.Amount
+	if newCredit < 0 {
+		return c.Status(400).JSON(fiber.Map{"error": "เครดิตติดลบไม่ได้"})
+	}
+
+	database.DB.Model(&user).Update("credit", newCredit)
+
+	return c.JSON(fiber.Map{"message": "ปรับปรุงสำเร็จ", "new_credit": newCredit})
 }
 
 // 5. ดูสถิติการเงิน (Dashboard)
@@ -112,6 +97,9 @@ func UpdateUser(c *fiber.Ctx) error {
 		Credit float64 `json:"credit"`
 		Role   string  `json:"role"`
 	}
+	if id == "" || id == "0" || id == "undefined" {
+		return c.Status(400).JSON(fiber.Map{"message": "ID ผู้ใช้งานไม่ถูกต้อง"})
+	}
 
 	var input UpdateInput
 	if err := c.BodyParser(&input); err != nil {
@@ -141,4 +129,61 @@ func UpdateUser(c *fiber.Ctx) error {
 		"message": "อัปเดตข้อมูลเรียบร้อยแล้ว",
 		"data":    user,
 	})
+}
+func GetUserDetail(c *fiber.Ctx) error {
+	id := c.Params("id")
+
+	// เพิ่มตรงนี้เพื่อแก้ Log ID = 0 ✅
+	if id == "" || id == "0" || id == "undefined" {
+		return c.Status(400).JSON(fiber.Map{"error": "ไม่ระบุไอดีผู้ใช้"})
+	}
+
+	var user models.User
+	if err := database.DB.First(&user, id).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "ไม่พบสมาชิก"})
+	}
+	return c.JSON(user)
+}
+func HandleCreditAdjustment(c *fiber.Ctx) error {
+	id := c.Params("id")
+
+	// ดัก ID 0 หรือค่าว่างทันทีเพื่อไม่ให้เกิด Log record not found
+	if id == "" || id == "0" || id == "undefined" {
+		return c.Status(400).JSON(fiber.Map{"error": "ID ผู้ใช้งานไม่ถูกต้อง"})
+	}
+
+	type Request struct {
+		Amount float64 `json:"amount"`
+	}
+	var req Request
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
+	}
+
+	// ใช้ Transaction เพื่อความปลอดภัย
+	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		var user models.User
+		if err := tx.First(&user, id).Error; err != nil {
+			return err // ถ้าหาไม่เจอจะ Rollback เอง
+		}
+
+		if err := tx.Model(&user).Update("credit", user.Credit+req.Amount).Error; err != nil {
+			return err
+		}
+		log := models.Transaction{
+			UserID: user.ID,
+			Amount: req.Amount,
+			Type:   "adjustment", // ระบุว่าเป็นการปรับปรุงโดยแอดมิน
+			Status: "approved",
+		}
+		if err := tx.Create(&log).Error; err != nil {
+			return err // ถ้าบันทึก Log ไม่สำเร็จ ให้ยกเลิกการเติมเงินด้วย
+		}
+		return nil
+	})
+
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "ปรับปรุงเครดิตล้มเหลว"})
+	}
+	return c.JSON(fiber.Map{"message": "สำเร็จ"})
 }

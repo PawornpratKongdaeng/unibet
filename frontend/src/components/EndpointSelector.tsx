@@ -18,7 +18,7 @@ export default function EndpointSelector({ currentEndpoint, setEndpoint }: Endpo
               : "text-gray-400 hover:text-white"
           }`}
         >
-          {type === "moung" ? "ตารางวันนี้" : type === "live" ? "บอลสด" : "ผลการแข่ง"}
+          {type === "moung" ? "ตารางวันนี้" : type === "live" ? "บอลสด(กำลังเตะ)" : "ผลการแข่ง"}
         </button>
       ))}
     </div>

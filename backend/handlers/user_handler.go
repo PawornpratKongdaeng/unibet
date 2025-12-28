@@ -4,6 +4,7 @@ import (
 	"github.com/PawornpratKongdaeng/soccer/database"
 	"github.com/PawornpratKongdaeng/soccer/models"
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 )
 
 // GET /api/v3/user/balance
@@ -63,4 +64,44 @@ func GetMe(c *fiber.Ctx) error {
 		"phone":    user.Phone, // ✅ เปลี่ยน key เป็น "phone" (ตัวพิมพ์เล็ก) ให้ตรงกับ frontend
 		"credit":   user.Credit,
 	})
+}
+func UpdateUserCredit(c *fiber.Ctx) error {
+	userID := c.Params("id")
+
+	// รับค่าจาก Body (ที่ส่งมาจาก fetch)
+	type Request struct {
+		Amount float64 `json:"amount"`
+	}
+	var req Request
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
+	}
+
+	// เริ่ม Transaction เพื่อความปลอดภัย
+	dbTx := database.DB.Begin()
+
+	// 1. อัปเดตเครดิต (ใช้ gorm.Expr เพื่อป้องกัน Race Condition)
+	// หมายเหตุ: ตรวจสอบว่าใน DB ของคุณใช้ชื่อ "credit" หรือ "balance"
+	result := dbTx.Model(&models.User{}).Where("id = ?", userID).
+		UpdateColumn("credit", gorm.Expr("credit + ?", req.Amount))
+
+	if result.Error != nil {
+		dbTx.Rollback()
+		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถอัปเดตเครดิตได้"})
+	}
+
+	// 2. (แนะนำ) บันทึกประวัติการเติมเงิน (Audit Log)
+	// เพื่อให้เจ้าของเว็บเช็คได้ว่าแอดมินคนไหนเติมให้ใคร
+	/*
+		log := models.AdminLog{
+			AdminID: c.Locals("admin_id").(uint), // ดึง ID แอดมินจาก Middleware
+			Action:  "ADJUST_CREDIT",
+			Target:  userID,
+			Details: fmt.Sprintf("ปรับเครดิตจำนวน: %.2f", req.Amount),
+		}
+		dbTx.Create(&log)
+	*/
+
+	dbTx.Commit()
+	return c.JSON(fiber.Map{"message": "อัปเดตเครดิตสำเร็จ"})
 }

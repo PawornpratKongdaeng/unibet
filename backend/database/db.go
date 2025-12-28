@@ -35,6 +35,7 @@ func InitDB() {
 		&models.ParlayItem{},
 		&models.Settlement{},
 		&models.Transaction{},
+		&models.Match{},
 	)
 
 	// 4. Seeding: สร้าง Admin เริ่มต้น
