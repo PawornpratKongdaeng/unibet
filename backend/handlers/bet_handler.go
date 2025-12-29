@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"log"
 	"strconv"
 
 	"github.com/PawornpratKongdaeng/soccer/database"
@@ -26,8 +27,17 @@ type PlaceBetRequest struct {
 }
 
 // 2. ฟังก์ชันวางเดิมพัน
+
 func PlaceBet(c *fiber.Ctx) error {
-	// ดึง userID จาก Middleware
+	// 1. รับค่าจาก Body
+	var req PlaceBetRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลการส่งค่าไม่ถูกต้อง"})
+	}
+
+	log.Printf("📥 Incoming Bet: Home=%s, Away=%s, MatchID=%s", req.HomeTeam, req.AwayTeam, req.MatchID)
+
+	// 2. ดึง userID จาก Middleware
 	var userID uint
 	switch v := c.Locals("user_id").(type) {
 	case float64:
@@ -38,39 +48,27 @@ func PlaceBet(c *fiber.Ctx) error {
 		return c.Status(401).JSON(fiber.Map{"error": "กรุณาเข้าสู่ระบบใหม่"})
 	}
 
-	var req PlaceBetRequest
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลการส่งค่าไม่ถูกต้อง"})
-	}
-
-	// ตรวจสอบยอดเงินเบื้องต้น
 	if req.Amount <= 0 {
 		return c.Status(400).JSON(fiber.Map{"error": "ยอดเดิมพันต้องมากกว่า 0"})
 	}
 
-	// --- [จุดแก้ไขสำคัญ: ต้องแปลงค่าภายในฟังก์ชัน] ---
+	// 4. พยายามดึงข้อมูล Match จาก DB
+	var match models.Match
+	// 💡 ไม่ต้อง return 404 แล้ว ถ้าหาไม่เจอเราจะใช้ข้อมูลจาก req แทน
+	database.DB.Where("match_id = ?", req.MatchID).First(&match)
 
-	// แปลง MatchID จาก string เป็น uint
-	mID, err := strconv.ParseUint(req.MatchID, 10, 32)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "รหัสการแข่งขัน (MatchID) ไม่ถูกต้อง"})
-	}
-
-	// แปลง Hdp จาก string เป็น float64
+	// 5. แปลงค่าเพื่อบันทึก
+	mID, _ := strconv.ParseUint(req.MatchID, 10, 32)
 	hdpFloat, _ := strconv.ParseFloat(req.Hdp, 64)
 
-	// ------------------------------------------
-
-	// เริ่มกระบวนการทางฐานข้อมูล (Transaction)
+	// 6. เริ่ม Transaction
 	return database.DB.Transaction(func(tx *gorm.DB) error {
 		var user models.User
 
-		// ล็อกแถว User ไว้เพื่อป้องกันการแทงซ้อน (Race Condition)
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, userID).Error; err != nil {
-			return c.Status(404).JSON(fiber.Map{"error": "ไม่พบผู้ใช้งานในระบบ"})
+			return c.Status(404).JSON(fiber.Map{"error": "ไม่พบผู้ใช้งาน"})
 		}
 
-		// เช็คยอดเงิน
 		if user.Credit < req.Amount {
 			return c.Status(400).JSON(fiber.Map{"error": "เครดิตของคุณไม่เพียงพอ"})
 		}
@@ -78,41 +76,60 @@ func PlaceBet(c *fiber.Ctx) error {
 		balanceBefore := user.Credit
 		balanceAfter := user.Credit - req.Amount
 
-		// 3. หักเครดิต User
 		if err := tx.Model(&user).Update("credit", balanceAfter).Error; err != nil {
 			return err
 		}
 
-		// 4. สร้างบิล (BetSlip)
+		// --- [จุดแก้ไขสำคัญ: ระบบเลือกข้อมูล] ---
+		// ถ้า match ใน DB มีค่า (HomeTeam ไม่ว่าง) ให้ใช้จาก DB
+		// แต่ถ้าไม่มี (Record not found) ให้ใช้จาก req ที่ส่งมาจากหน้าบ้าน
+		finalHome := match.HomeTeam
+		if finalHome == "" {
+			finalHome = req.HomeTeam
+		}
+
+		finalAway := match.AwayTeam
+		if finalAway == "" {
+			finalAway = req.AwayTeam
+		}
+
+		finalHomeLogo := match.HomeLogo
+		if finalHomeLogo == "" {
+			finalHomeLogo = req.HomeLogo
+		}
+
+		finalAwayLogo := match.AwayLogo
+		if finalAwayLogo == "" {
+			finalAwayLogo = req.AwayLogo
+		}
+		// ------------------------------------
+
 		bet := models.BetSlip{
 			UserID:   userID,
 			MatchID:  uint(mID),
-			HomeTeam: req.HomeTeam,
-			AwayTeam: req.AwayTeam,
-			HomeLogo: req.HomeLogo,
-			AwayLogo: req.AwayLogo,
+			HomeTeam: finalHome,
+			AwayTeam: finalAway,
+			HomeLogo: finalHomeLogo,
+			AwayLogo: finalAwayLogo,
 			Pick:     req.Pick,
 			Hdp:      hdpFloat,
 			Amount:   req.Amount,
 			Odds:     req.Odds,
 			Status:   "pending",
 		}
+
 		if err := tx.Create(&bet).Error; err != nil {
 			return err
 		}
 
-		// 5. บันทึก Transaction Log เพื่อใช้ตรวจสอบภายหลัง
-		transaction := models.Transaction{
+		tx.Create(&models.Transaction{
 			UserID:        userID,
 			Amount:        req.Amount,
 			Type:          "bet",
 			Status:        "success",
 			BalanceBefore: balanceBefore,
 			BalanceAfter:  balanceAfter,
-		}
-		if err := tx.Create(&transaction).Error; err != nil {
-			return err
-		}
+		})
 
 		return c.JSON(fiber.Map{
 			"message": "วางเดิมพันสำเร็จ",

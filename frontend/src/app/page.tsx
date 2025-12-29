@@ -48,26 +48,31 @@ export default function Home() {
   };
 
   const handleConfirmBet = async (amount: number) => {
-    if (!selectedBet) return;
-    
-    const payload = {
-      match_id: String(selectedBet.match.id), 
-      home_team: selectedBet.match.home_name,
-      away_team: selectedBet.match.away_name,
-      home_logo: selectedBet.match.home_logo,
-      away_logo: selectedBet.match.away_logo,
-      pick: selectedBet.side,   
-      type: selectedBet.type,   
-      odds: parseFloat(String(selectedBet.odds)), 
-      amount: amount,
-      hdp: String(selectedBet.hdp || "0")
-    };
+  if (!selectedBet) return;
+  
+  // 💡 ดึง match object ออกมาเพื่อให้เรียกใช้ง่ายๆ
+  const m = selectedBet.match;
 
-    try {
-      const res = await apiFetch("/bet", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
+  const payload = {
+    match_id: String(m.id || m.match_id), 
+    // ✅ ปรับตรงนี้: ดึงค่าจากทุกความเป็นไปได้ (เหมือนใน MatchCard)
+    home_team: m.home_name || m.home_team || "Home Team",
+    away_team: m.away_name || m.away_team || "Away Team",
+    home_logo: m.home_logo || m.home_team_image_url || "",
+    away_logo: m.away_logo || m.away_team_image_url || "",
+    
+    pick: selectedBet.side,   
+    type: selectedBet.type,   
+    odds: parseFloat(String(selectedBet.odds)), 
+    amount: amount,
+    hdp: String(selectedBet.hdp || "0")
+  };
+
+  try {
+    const res = await apiFetch("/bet", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
       const result = await res.json();
       if (res.ok) {
         showToast('success', 'วางเดิมพันสำเร็จ!');

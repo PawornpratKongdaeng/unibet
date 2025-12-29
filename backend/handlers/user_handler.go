@@ -105,3 +105,14 @@ func UpdateUserCredit(c *fiber.Ctx) error {
 	dbTx.Commit()
 	return c.JSON(fiber.Map{"message": "อัปเดตเครดิตสำเร็จ"})
 }
+func GetMyBets(c *fiber.Ctx) error {
+	userID := c.Locals("user_id")
+	var bets []models.BetSlip
+
+	// ✅ ต้องมี .Preload("Match") เพื่อให้ข้อมูลชื่อทีมในตาราง Match ถูกดึงออกมาด้วย
+	if err := database.DB.Preload("Match").Where("user_id = ?", userID).Find(&bets).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(bets)
+}

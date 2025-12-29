@@ -17,6 +17,8 @@ func SetupRoutes(app *fiber.App) {
 
 	// ดึงข้อมูลธนาคารหน้าเว็บ (สำหรับให้ลูกค้าดูตอนฝากเงิน)
 	api.Get("/config/bank", handlers.GetAdminBank)
+	app.Static("/uploads", "./uploads")
+	app.Post("/api/deposit", handlers.SubmitDeposit)
 
 	// --- Zone 2: Member (ต้องมี Token) ---
 	member := api.Group("/", middleware.AuthMiddleware())

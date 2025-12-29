@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"log"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/PawornpratKongdaeng/soccer/database"
 	"github.com/PawornpratKongdaeng/soccer/models"
+	"github.com/PawornpratKongdaeng/soccer/services"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/gofiber/fiber/v2"
@@ -53,11 +55,11 @@ func ManualSettlement(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "ระบบเริ่มทำการตรวจสอบผลและเคลียร์บิลแล้ว"})
 }
 
-// 2. ฟังก์ชันหลักในการดึงผลจาก API และจ่ายเงิน
 func AutoSettlement() {
 	log.Println("🔄 [Settlement] Starting process...")
 
 	var pendingBets []models.BetSlip
+	// ดึงบิลที่ค้างอยู่
 	if err := database.DB.Where("status = ?", "pending").Find(&pendingBets).Error; err != nil {
 		log.Printf("❌ [Settlement] DB Error: %v", err)
 		return
@@ -68,25 +70,24 @@ func AutoSettlement() {
 		return
 	}
 
+	// เรียก API ผลบอล
 	client := resty.New().SetTimeout(15 * time.Second)
-	// หมายเหตุ: อย่าลืมเปลี่ยน API Key จาก demoapi เป็น key จริงของคุณ
 	url := "https://htayapi.com/mmk-autokyay/v3/results?key=demoapi"
 	var apiData ResultsResponse
-
 	resp, err := client.R().SetResult(&apiData).Get(url)
+
 	if err != nil || resp.IsError() {
-		log.Printf("❌ [Settlement] API Request Failed")
+		log.Printf("❌ [Settlement] API Request Failed: %v", err)
 		return
 	}
 
-	// สร้าง Map เพื่อให้ค้นหาผลบอลตาม MatchID ได้เร็วขึ้น
+	// ทำ Map เพื่อความเร็วในการค้นหา
 	resultsMap := make(map[string]struct {
 		Home, Away int
 		IsFinished bool
 	})
 	for _, r := range apiData.Data {
 		s := strings.ToUpper(r.Status)
-		// เช็คสถานะที่ API ส่งมาว่าจบการแข่งขันหรือยัง
 		finished := (s == "FT" || s == "FINISHED" || s == "CLOSED")
 		resultsMap[r.MatchID] = struct {
 			Home, Away int
@@ -98,17 +99,16 @@ func AutoSettlement() {
 		matchKey := fmt.Sprintf("%d", bet.MatchID)
 		res, exists := resultsMap[matchKey]
 
-		// ถ้าไม่มีผลบอลใน API หรือยังแข่งไม่จบ ให้ข้ามไปก่อน
 		if !exists || !res.IsFinished {
 			continue
 		}
 
-		// เรียกฟังก์ชันคำนวณผลชนะ/แพ้
-		status, payout := CalculatePayout(bet.Amount, bet.Odds, bet.Hdp, bet.Pick, res.Home, res.Away)
+		// คำนวณผลผ่าน Service
+		status, payout := services.CalculatePayout(bet.Amount, bet.Odds, bet.Hdp, bet.Pick, res.Home, res.Away)
 
-		// เริ่มกระบวนการจ่ายเงิน (DB Transaction)
+		// เริ่มบันทึกผล
 		errTx := database.DB.Transaction(func(tx *gorm.DB) error {
-			// 1. อัปเดตสถานะบิลเดิมพัน
+			// 1. อัปเดตสถานะบิล
 			updateResult := tx.Model(&bet).
 				Where("id = ? AND status = ?", bet.ID, "pending").
 				Updates(map[string]interface{}{
@@ -121,23 +121,19 @@ func AutoSettlement() {
 				return updateResult.Error
 			}
 
-			// 2. ถ้ามีการอัปเดตสำเร็จ และมียอดจ่ายเงิน (payout > 0) ให้เพิ่มเครดิตให้ User
+			// 2. ถ้าชนะหรือเสมอ ให้คืนเงิน/จ่ายรางวัล
 			if updateResult.RowsAffected > 0 && payout > 0 {
 				if err := tx.Model(&models.User{}).Where("id = ?", bet.UserID).
 					UpdateColumn("credit", gorm.Expr("credit + ?", payout)).Error; err != nil {
 					return err
 				}
 
-				// 3. บันทึกประวัติการรับเงิน (Transaction Log)
-				logEntry := models.Transaction{
+				tx.Create(&models.Transaction{
 					UserID: bet.UserID,
 					Amount: payout,
-					Type:   "win",
-					Status: "approved",
-				}
-				if err := tx.Create(&logEntry).Error; err != nil {
-					return err
-				}
+					Type:   "payout",
+					Status: "success",
+				})
 			}
 			return nil
 		})
@@ -161,34 +157,68 @@ func CalculatePayout(amount, odds float64, hdp float64, pick string, home, away 
 		finalDiff = hdp - diff
 	}
 
-	// คำนวณกำไรเต็มตามราคาน้ำ (เช่น @76 คือ กำไร 76% ของเงินต้น)
-	profitFull := (amount * odds) / 100
+	var status string
+	var payout float64
 
+	// 1. วิเคราะห์สถานะจากแต้มต่อ (HDP)
 	switch {
 	case finalDiff >= 0.5:
-		// ชนะเต็ม: คืนทุน + กำไรเต็ม
-		return "win", amount + profitFull
-
+		status = "win"
 	case finalDiff == 0.25:
-		// ชนะครึ่ง: คืนทุน + กำไรครึ่งเดียว
-		return "win_half", amount + (profitFull / 2)
-
+		status = "win_half"
 	case finalDiff == 0:
-		// เสมอ (เจ๊า): คืนทุนเดิม
-		return "draw", amount
-
+		status = "draw"
 	case finalDiff == -0.25:
-		// เสียครึ่ง: คืนเงินต้นให้ครึ่งเดียว
-		return "lose_half", amount / 2
-
+		status = "lose_half"
 	default:
-		// แพ้เต็ม: ไม่ได้เงินคืน
-		return "loss", 0
+		status = "loss"
 	}
+
+	// 2. คำนวณเงินตามราคาน้ำ (Myanmar Kyay Logic)
+	// ราคาน้ำบวก (เช่น 60): แทง 100 ได้ 60, เสีย 100
+	// ราคาน้ำลบ (เช่น -80): แทง 100 ได้ 100, เสีย 80
+
+	if status == "draw" {
+		return "draw", amount // เสมอคืนทุน
+	}
+
+	if odds >= 0 {
+		// --- กรณีราคาน้ำบวก ---
+		profitFull := (amount * odds) / 100
+		switch status {
+		case "win":
+			payout = amount + profitFull
+		case "win_half":
+			payout = amount + (profitFull / 2)
+		case "lose_half":
+			payout = amount / 2
+		case "loss":
+			payout = 0
+		}
+	} else {
+		// --- กรณีราคาน้ำลบ (เช่น -80) ---
+		absOdds := math.Abs(odds)
+		riskAmount := (amount * absOdds) / 100 // แทง 100 เสี่ยงจริงแค่ 80
+
+		switch status {
+		case "win":
+			payout = amount + amount // ได้กำไร 100 เต็ม (ทุน 100 + กำไร 100)
+		case "win_half":
+			payout = amount + (amount / 2)
+		case "lose_half":
+			// เสียครึ่งของยอดเสี่ยง (เสีย 40 จาก 80) -> คืนทุน 100 - 40 = 60
+			payout = amount - (riskAmount / 2)
+		case "loss":
+			// เสียเต็มยอดเสี่ยง (เสีย 80) -> คืนทุน 100 - 80 = 20
+			payout = amount - riskAmount
+		}
+	}
+
+	return status, payout
 }
 
-// 4. ฟังก์ชันเสริมสำหรับแปลง HDP กรณี API ส่งมาเป็นสตริงแบบ "0.5/1" (ถ้าจำเป็น)
-func parseHdp(hdpStr string) float64 {
+// ParseHdp แปลงค่า HDP จาก String เป็น Float64
+func ParseHdp(hdpStr string) float64 {
 	hdpStr = strings.ReplaceAll(hdpStr, "/", "-")
 	if strings.Contains(hdpStr, "-") {
 		parts := strings.Split(hdpStr, "-")

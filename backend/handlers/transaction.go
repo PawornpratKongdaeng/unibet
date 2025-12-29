@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"fmt"
+
 	"github.com/PawornpratKongdaeng/soccer/database"
 	"github.com/PawornpratKongdaeng/soccer/models"
 	"github.com/gofiber/fiber/v2"
@@ -68,31 +70,35 @@ func CreateWithdraw(c *fiber.Ctx) error {
 
 // [ADMIN] กดยืนยันยอดฝาก (Approve Deposit)
 func ApproveDeposit(c *fiber.Ctx) error {
-	txID := c.Params("id")
+	requestID := c.Params("id")
 
-	return database.DB.Transaction(func(dbTx *gorm.DB) error {
-		var transaction models.Transaction
-		if err := dbTx.First(&transaction, txID).Error; err != nil {
-			return c.Status(404).JSON(fiber.Map{"error": "ไม่พบรายการธุรกรรม"})
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		var req models.TopupRequest
+		if err := tx.First(&req, requestID).Error; err != nil {
+			return err
 		}
 
-		if transaction.Status != "pending" || transaction.Type != "deposit" {
-			return c.Status(400).JSON(fiber.Map{"error": "รายการนี้ไม่สามารถอนุมัติได้"})
+		if req.Status != "pending" {
+			return fmt.Errorf("รายการนี้ถูกดำเนินการไปแล้ว")
 		}
 
+		// 1. อัปเดตสถานะคำขอ
+		tx.Model(&req).Update("status", "approved")
+
+		// 2. เพิ่มเครดิตให้ลูกค้า
 		var user models.User
-		dbTx.First(&user, transaction.UserID)
+		tx.First(&user, req.UserID)
+		tx.Model(&user).Update("credit", user.Credit+req.Amount)
 
-		// เก็บประวัติยอดเงิน
-		transaction.BalanceBefore = user.Credit
-		transaction.BalanceAfter = user.Credit + transaction.Amount
-		transaction.Status = "success"
+		// 3. บันทึก Transaction Log
+		tx.Create(&models.Transaction{
+			UserID: req.UserID,
+			Amount: req.Amount,
+			Type:   "deposit",
+			Status: "success",
+		})
 
-		// บันทึกสถานะ Transaction และ บวกเงิน User
-		dbTx.Save(&transaction)
-		dbTx.Model(&user).Update("credit", gorm.Expr("credit + ?", transaction.Amount))
-
-		return c.JSON(fiber.Map{"message": "อนุมัติการฝากเงินเรียบร้อย เครดิตเพิ่มแล้ว"})
+		return nil
 	})
 }
 
