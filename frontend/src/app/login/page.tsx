@@ -17,24 +17,21 @@ export default function LoginPage() {
 
    try {
       // ✅ แก้ไขบรรทัดนี้: ใช้ Environment Variable แทน URL ตรงๆ
-      const res = await apiFetch("/login", { // ตัด /api/v3 ออกเพื่อให้สั้นลง
+      const res = await apiFetch("/api/v3/login", {
         method: "POST",
         body: JSON.stringify({ username, password }),
-        // เพิ่มการปิดการใช้ Token เก่าสำหรับหน้านี้ (ถ้าคุณปรับ api.ts ตามที่ผมแนะนำก่อนหน้า)
       });
-      
+
       const data = await res.json();
-      
+
       if (res.ok) {
         localStorage.setItem("token", data.token);
         localStorage.setItem("user", JSON.stringify(data.user));
         showToast("success", `ยินดีต้อนรับคุณ ${data.user.username}`);
-      
-        // ✅ เช็คตัวพิมพ์เล็ก-ใหญ่ป้องกันพลาด
-        const role = data.user.role?.toLowerCase();
-        if (role === "admin") {
+
+        if (data.user.role === "admin") {
           router.push("/admin");
-        } else if (role === "agent" || role === "master") {
+        } else if (data.user.role === "agent" || data.user.role === "master") {
           router.push("/agent");
         } else {
           router.push("/");
