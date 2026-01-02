@@ -9,23 +9,25 @@ import (
 
 func SetupRoutes(app *fiber.App) {
 	app.Static("/uploads", "./uploads")
+
+	// สร้าง API Group หลัก
 	api := app.Group("/api/v3")
 
-	// --- 🟢 1. Public Routes (ไม่ต้องใช้ Token) ---
-	api.Post("/register", handlers.Register)
-	api.Post("/login", handlers.Login)
+	// --- 🟢 1. Public Routes (เข้าได้เลย) ---
 	api.Get("/settings", handlers.GetSettings)
 	api.Get("/config/bank", handlers.GetAdminBank)
+	api.Post("/register", handlers.Register)
+	api.Post("/login", handlers.Login)
 
-	// --- 🔵 2. Global Protected Routes (ต้องมี Token แต่ไม่ต้องมี Prefix) ---
-	// ใช้ตัวนี้เพื่อให้เรียก /api/v3/me และ /api/v3/match ได้ตามที่ Frontend ต้องการ
-	authOnly := api.Group("/", middleware.AuthMiddleware())
+	// --- 🔵 2. Protected Root Routes (ต้องมี Token และห้ามมี /user นำหน้า) ---
+	// กลุ่มนี้แก้ปัญหา 404 ของ Match และ 401 ของ /me
+	rootAuth := api.Group("/", middleware.AuthMiddleware())
 	{
-		authOnly.Get("/me", handlers.GetMe)
-		authOnly.Get("/match/:path", handlers.GetMatches) // ✅ แก้ 404 ของ match
+		rootAuth.Get("/me", handlers.GetMe)               // แก้ 401: ให้เรียก /api/v3/me ได้
+		rootAuth.Get("/match/:path", handlers.GetMatches) // แก้ 404: ให้เรียก /api/v3/match/... ได้เลย
 	}
 
-	// --- 🔵 3. Member Routes (/api/v3/user/...) ---
+	// --- 🔵 3. Member Routes (เรียกผ่าน /api/v3/user/...) ---
 	member := api.Group("/user", middleware.AuthMiddleware())
 	{
 		member.Get("/balance", handlers.GetBalance)
@@ -36,7 +38,7 @@ func SetupRoutes(app *fiber.App) {
 		member.Post("/bet", handlers.PlaceBet)
 	}
 
-	// --- 🔴 4. Admin Routes (/api/v3/admin/...) ---
+	// --- 🔴 4. Admin Routes (เรียกผ่าน /api/v3/admin/...) ---
 	admin := api.Group("/admin", middleware.AuthMiddleware(), middleware.RequireAdminRole())
 	{
 		admin.Get("/users", handlers.GetUsers)
@@ -45,6 +47,8 @@ func SetupRoutes(app *fiber.App) {
 		admin.Get("/finance/summary", handlers.GetFinanceSummary)
 		admin.Get("/transactions/pending", handlers.GetPendingTransactions)
 		admin.Post("/transactions/approve/:id", handlers.ApproveTransaction)
+		admin.Post("/transactions/reject/:id", handlers.RejectTransaction)
+		admin.Put("/config/bank", handlers.UpdateAdminBank)
 		admin.Put("/settings", handlers.UpdateSettings)
 		admin.Post("/settle", services.ManualSettlement)
 	}
