@@ -34,7 +34,7 @@ export default function Home() {
 
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
-    if (!token) router.push("/auth"); 
+    if (!token) router.push("/login"); 
   }, [router]);
 
   const matches = data?.data || [];
