@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { showToast } from "@/lib/sweetAlert";
 import Swal from "sweetalert2";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api";
 
 // รายชื่อธนาคาร (สามารถเพิ่มได้ตามต้องการ)
 const BANK_LIST = [
@@ -56,12 +57,8 @@ export default function RegisterPage() {
 
     try {
       // ✅ 1. เพิ่มการดึงค่า API URL จาก env
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-
-      // ✅ 2. เปลี่ยน URL ใน fetch เป็น template literal
-      const res = await fetch(`${apiUrl}/api/v3/register`, {
+      const res = await apiFetch("/api/v3/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           phone: formData.phone,
           password: formData.password,

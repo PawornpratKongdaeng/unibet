@@ -8,6 +8,7 @@ import {
   FileText, Gavel, Landmark, Settings, 
   LogOut, Menu, X, ShieldCheck, Loader2
 } from "lucide-react";
+import { apiFetch } from "@/lib/api";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();

@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { showToast } from "@/lib/sweetAlert"; // ตรวจสอบ path ไฟล์ sweetAlert ของคุณด้วย
+import { showToast } from "@/lib/sweetAlert";
+import { apiFetch } from "@/lib/api";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -18,9 +19,8 @@ export default function AuthPage() {
     const payload = { username, password };
 
     try {
-      const res = await fetch(`http://localhost:8080${endpoint}`, {
+      const res = await apiFetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 

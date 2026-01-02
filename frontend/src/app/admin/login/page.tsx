@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { showToast } from "@/lib/sweetAlert";
 import { ShieldCheck, Lock, User, ChevronRight } from "lucide-react";
+import { apiFetch } from "@/lib/api";
 
 export default function AdminLoginPage() {
   const [username, setUsername] = useState("");
@@ -15,9 +16,8 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:8080/api/v3/login", {
+      const res = await apiFetch("/api/v3/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
 
