@@ -15,6 +15,7 @@ import {
   Database,
   Globe
 } from "lucide-react"; // นำเข้าไอคอน Line-Outline
+import  BASE_URL  from "@/lib/api";
 
 export default function AdminPage() {
   const [stats, setStats] = useState<any>(null);
@@ -26,10 +27,10 @@ export default function AdminPage() {
       
       try {
         const [users, bets, txs, finance] = await Promise.all([
-          fetch("http://localhost:8080/api/v3/admin/users", { headers }).then(res => res.json()),
-          fetch("http://localhost:8080/api/v3/admin/bets", { headers }).then(res => res.json()),
-          fetch("http://localhost:8080/api/v3/admin/transactions/pending", { headers }).then(res => res.json()),
-          fetch("http://localhost:8080/api/v3/admin/finance/summary", { headers }).then(res => res.json()),
+          fetch(`${BASE_URL}/api/v3/admin/users`, { headers }).then(res => res.json()),
+      fetch(`${API_URL}/api/v3/admin/bets`, { headers }).then(res => res.json()),
+      fetch(`${API_URL}/api/v3/admin/transactions/pending`, { headers }).then(res => res.json()),
+      fetch(`${API_URL}/api/v3/admin/finance/summary`, { headers }).then(res => res.json()),
         ]);
 
         setStats({

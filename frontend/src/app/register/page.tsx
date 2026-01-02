@@ -55,7 +55,11 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:8080/api/v3/register", {
+      // ✅ 1. เพิ่มการดึงค่า API URL จาก env
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
+      // ✅ 2. เปลี่ยน URL ใน fetch เป็น template literal
+      const res = await fetch(`${apiUrl}/api/v3/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
