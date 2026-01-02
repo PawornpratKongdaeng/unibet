@@ -53,5 +53,5 @@ func main() {
 	// go workers.RunAutoSettlement()
 
 	// 6. Start Server
-	log.Fatal(app.Listen(":8080"))
+	log.Fatal(app.Listen(":8000"))
 }
