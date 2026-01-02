@@ -15,28 +15,34 @@ import {
   Database,
   Globe
 } from "lucide-react"; // นำเข้าไอคอน Line-Outline
-import  BASE_URL  from "@/lib/api";
+import { apiFetch } from "@/lib/api"; // ✅ ใช้ apiFetch ตัวเดียวจบ
 
 export default function AdminPage() {
   const [stats, setStats] = useState<any>(null);
 
   useEffect(() => {
     const fetchStats = async () => {
-      const token = localStorage.getItem("token");
-      const headers = { "Authorization": `Bearer ${token}` };
-      
       try {
+        // ✅ ใช้ apiFetch ซึ่งจัดการ Base URL และ Token ให้แล้ว
+        const [usersRes, betsRes, txsRes, financeRes] = await Promise.all([
+          apiFetch("/admin/users"),
+          apiFetch("/admin/bets"),
+          apiFetch("/admin/transactions/pending"),
+          apiFetch("/admin/finance/summary"),
+        ]);
+
+        // แปลงเป็น JSON
         const [users, bets, txs, finance] = await Promise.all([
-          fetch(`${BASE_URL}/api/v3/admin/users`, { headers }).then(res => res.json()),
-      fetch(`${API_URL}/api/v3/admin/bets`, { headers }).then(res => res.json()),
-      fetch(`${API_URL}/api/v3/admin/transactions/pending`, { headers }).then(res => res.json()),
-      fetch(`${API_URL}/api/v3/admin/finance/summary`, { headers }).then(res => res.json()),
+          usersRes.json(),
+          betsRes.json(),
+          txsRes.json(),
+          financeRes.json(),
         ]);
 
         setStats({
-          totalUsers: users.length,
-          totalBets: bets.length,
-          pendingTxs: txs.length,
+          totalUsers: users.length || 0,
+          totalBets: bets.length || 0,
+          pendingTxs: txs.length || 0,
           todayProfit: (finance.total_deposit || 0) - (finance.total_withdraw || 0)
         });
       } catch (err) {
@@ -45,7 +51,6 @@ export default function AdminPage() {
     };
     fetchStats();
   }, []);
-
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-10 animate-in fade-in duration-700">
 
