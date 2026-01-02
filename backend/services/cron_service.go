@@ -2,8 +2,7 @@ package services
 
 import (
 	"log"
-
-	"github.com/PawornpratKongdaeng/soccer/handlers" // ปรับตาม path ของคุณ
+	// ปรับตาม path ของคุณ
 	"github.com/robfig/cron/v3"
 )
 
@@ -15,7 +14,7 @@ func InitCron() {
 	// Format: "*/5 * * * *" (นาที ชั่วโมง วัน เดือน วันในสัปดาห์)
 	_, err := c.AddFunc("*/5 * * * *", func() {
 		log.Println("⏰ [Cron] Starting AutoSettlement task...")
-		handlers.AutoSettlement()
+		AutoSettlement()
 	})
 
 	if err != nil {

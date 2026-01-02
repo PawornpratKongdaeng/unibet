@@ -4,9 +4,9 @@ import (
 	"log"
 
 	"github.com/PawornpratKongdaeng/soccer/database"
-	"github.com/PawornpratKongdaeng/soccer/handlers"
 	"github.com/PawornpratKongdaeng/soccer/routes"
-	"github.com/robfig/cron/v3" // เพิ่ม import นี้ (อย่าลืม go get github.com/robfig/cron/v3)
+	"github.com/PawornpratKongdaeng/soccer/services"
+	"github.com/robfig/cron/v3"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -38,7 +38,7 @@ func main() {
 	// ตั้งเวลาให้รัน AutoSettlement ทุกๆ 5 นาที (หรือปรับเป็น "*/10 * * * *" สำหรับ 10 นาที)
 	_, err := c.AddFunc("*/5 * * * *", func() {
 		log.Println("⏰ [Cron] Task Started: Checking match results...")
-		handlers.AutoSettlement()
+		services.AutoSettlement()
 	})
 
 	if err != nil {

@@ -12,3 +12,8 @@ type CreditLog struct {
 	AfterBal   float64   `json:"after_balance"`
 	CreatedAt  time.Time `json:"created_at"`
 }
+type TransferRequest struct {
+	ToUserID uint    `json:"to_user_id" validate:"required"`
+	Amount   float64 `json:"amount" validate:"required,gt=0"`
+	Type     string  `json:"type" validate:"required,oneof=deposit withdraw"` // เติม หรือ ดึง
+}

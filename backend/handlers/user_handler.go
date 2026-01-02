@@ -116,3 +116,15 @@ func GetMyBets(c *fiber.Ctx) error {
 
 	return c.JSON(bets)
 }
+func GetUserProfile(c *fiber.Ctx) error {
+	// ดึง userID จาก JWT (ที่เก็บไว้ใน Locals)
+	userID := c.Locals("user_id").(float64)
+
+	var user models.User
+	if err := database.DB.First(&user, uint(userID)).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
+	}
+
+	// ✅ ส่ง JSON กลับไป (GORM จะใช้ json tags จาก struct models.User)
+	return c.JSON(user)
+}

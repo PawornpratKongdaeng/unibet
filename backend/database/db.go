@@ -36,6 +36,8 @@ func InitDB() {
 		&models.Settlement{},
 		&models.Transaction{},
 		&models.Match{},
+		&models.BankAccount{},
+		&models.SystemSetting{},
 	)
 
 	// 4. Seeding: สร้าง Admin เริ่มต้น

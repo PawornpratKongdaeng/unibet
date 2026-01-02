@@ -1,28 +1,37 @@
 package handlers
 
 import (
+	"fmt"
+
 	"github.com/PawornpratKongdaeng/soccer/database"
 	"github.com/PawornpratKongdaeng/soccer/models"
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
+type FinanceSummaryResponse struct {
+	TotalDeposit  float64 `json:"total_deposit"`
+	TotalWithdraw float64 `json:"total_withdraw"`
+}
+
 // ดึงข้อมูลบัญชีล่าสุด (ใช้ ID 1 เป็นหลัก)
 func GetAdminBank(c *fiber.Ctx) error {
-	var bank models.AdminBank
-	// ค้นหาข้อมูลแถวแรก ถ้าไม่มีให้สร้างข้อมูลเริ่มต้น
-	database.DB.FirstOrCreate(&bank, models.AdminBank{ID: 1})
+	var bank models.BankAccount
+	// GORM จะไปหาที่ตาราง bank_accounts อัตโนมัติ
+	if err := database.DB.First(&bank, 1).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "ยังไม่ได้ตั้งค่าบัญชีธนาคาร"})
+	}
 	return c.JSON(bank)
 }
 
 // อัปเดตข้อมูลบัญชีธนาคาร
 func UpdateAdminBank(c *fiber.Ctx) error {
-	var req models.AdminBank
+	var req models.BankAccount
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
 	}
 
-	var bank models.AdminBank
+	var bank models.BankAccount
 	database.DB.First(&bank, 1)
 
 	bank.BankName = req.BankName
@@ -36,9 +45,16 @@ func UpdateAdminBank(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "อัปเดตบัญชีธนาคารสำเร็จ", "data": bank})
 }
 func GetPendingTransactions(c *fiber.Ctx) error {
-	var txs []models.Transaction
-	database.DB.Preload("User").Where("status = ?", "pending").Order("created_at asc").Find(&txs)
-	return c.JSON(txs)
+	var transactions []models.Transaction
+
+	// ❌ ผิด: .Preload("Username") -> Username เป็น string ไม่ใช่ struct relationship
+	// ✅ ถูก: .Preload("User") -> ต้องอ้างอิงชื่อ Field ใน struct Transaction
+	result := database.DB.Preload("User").Where("status = ?", "pending").Find(&transactions)
+
+	if result.Error != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "ดึงข้อมูลล้มเหลว"})
+	}
+	return c.JSON(transactions)
 }
 
 // 2. GetTransactionHistory - ดึงประวัติทั้งหมด
@@ -51,19 +67,19 @@ func GetTransactionHistory(c *fiber.Ctx) error {
 
 // 3. GetFinanceSummary - สรุปยอดเงิน
 func GetFinanceSummary(c *fiber.Ctx) error {
-	var summary struct {
-		TotalDeposit  float64 `json:"total_deposit"`
-		TotalWithdraw float64 `json:"total_withdraw"`
-	}
+	var summary FinanceSummaryResponse
 
-	// ใช้ COALESCE เพื่อบังคับให้เป็น 0 เสมอหากไม่พบข้อมูล
+	// 1. คำนวณยอดฝากทั้งหมดที่อนุมัติแล้ว
 	database.DB.Model(&models.Transaction{}).
-		Where("type = ? AND status = ?", "deposit", "success").
-		Select("COALESCE(SUM(amount), 0)").Scan(&summary.TotalDeposit)
+		Where("type = ? AND status = ?", "deposit", "approved").
+		Select("COALESCE(SUM(amount), 0)").
+		Scan(&summary.TotalDeposit)
 
+	// 2. คำนวณยอดถอนทั้งหมดที่อนุมัติแล้ว
 	database.DB.Model(&models.Transaction{}).
-		Where("type = ? AND status = ?", "withdraw", "success").
-		Select("COALESCE(SUM(amount), 0)").Scan(&summary.TotalWithdraw)
+		Where("type = ? AND status = ?", "withdraw", "approved").
+		Select("COALESCE(SUM(amount), 0)").
+		Scan(&summary.TotalWithdraw)
 
 	return c.JSON(summary)
 }
@@ -88,62 +104,117 @@ func UpdateUserStatus(c *fiber.Ctx) error {
 
 // 5. ApproveTransaction - อนุมัติเงิน (ใช้ DB Transaction เพื่อความปลอดภัย)
 func ApproveTransaction(c *fiber.Ctx) error {
-	id := c.Params("id")
+	txID := c.Params("id")
 
-	err := database.DB.Transaction(func(tx *gorm.DB) error {
+	return database.DB.Transaction(func(dbTx *gorm.DB) error {
 		var transaction models.Transaction
-		if err := tx.First(&transaction, id).Error; err != nil {
+		if err := dbTx.First(&transaction, txID).Error; err != nil {
 			return err
 		}
+
 		if transaction.Status != "pending" {
-			return fiber.NewError(400, "รายการนี้ถูกดำเนินการไปแล้ว")
+			return fmt.Errorf("รายการนี้ถูกดำเนินการไปแล้ว")
 		}
 
-		// ถ้าเป็น "ฝากเงิน" (Deposit) -> ต้องบวกเงินให้ User
+		// ถ้าเป็นรายการฝาก (Deposit) ต้องไปบวกเงินให้ลูกค้า
 		if transaction.Type == "deposit" {
-			if err := tx.Model(&models.User{}).Where("id = ?", transaction.UserID).
-				UpdateColumn("credit", gorm.Expr("credit + ?", transaction.Amount)).Error; err != nil {
+			if err := dbTx.Model(&models.User{}).Where("id = ?", transaction.UserID).
+				Update("credit", gorm.Expr("credit + ?", transaction.Amount)).Error; err != nil {
 				return err
 			}
 		}
-		// หมายเหตุ: ถ้าเป็น "ถอนเงิน" ปกติเราจะตัดเงิน User ตั้งแต่ตอนกดแจ้งถอน (Pending)
-		// ดังนั้นตอน Approve แค่เปลี่ยนสถานะเป็น approved ก็พอ
+		// ถ้าเป็นรายการถอน (Withdraw) เราหักเงินไปแล้วตอนแจ้งถอน (Hold)
+		// ดังนั้นตอน Approve แค่เปลี่ยนสถานะเป็น success ก็พอ
 
-		return tx.Model(&transaction).Update("status", "approved").Error
+		transaction.Status = "approved"
+		return dbTx.Save(&transaction).Error
 	})
-
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
-	return c.JSON(fiber.Map{"message": "อนุมัติรายการเรียบร้อย"})
 }
 
 // 6. RejectTransaction - ปฏิเสธรายการ
 func RejectTransaction(c *fiber.Ctx) error {
 	id := c.Params("id")
+	var transaction models.Transaction
 
-	err := database.DB.Transaction(func(tx *gorm.DB) error {
-		var transaction models.Transaction
-		if err := tx.First(&transaction, id).Error; err != nil {
-			return err
-		}
-		if transaction.Status != "pending" {
-			return fiber.NewError(400, "รายการนี้ถูกดำเนินการไปแล้ว")
-		}
-
-		// ถ้าเป็น "ถอนเงิน" (Withdraw) แล้วแอดมิน Reject -> ต้องคืนเงินให้ User
-		if transaction.Type == "withdraw" {
-			if err := tx.Model(&models.User{}).Where("id = ?", transaction.UserID).
-				UpdateColumn("credit", gorm.Expr("credit + ?", transaction.Amount)).Error; err != nil {
-				return err
-			}
-		}
-
-		return tx.Model(&transaction).Update("status", "rejected").Error
-	})
-
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	// ดึงข้อมูลรายการ และ Preload User เพื่อคืนเงิน
+	if err := database.DB.Preload("User").First(&transaction, id).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "ไม่พบรายการ"})
 	}
-	return c.JSON(fiber.Map{"message": "ปฏิเสธรายการเรียบร้อย"})
+
+	if transaction.Status != "pending" {
+		return c.Status(400).JSON(fiber.Map{"error": "รายการนี้ถูกดำเนินการไปแล้ว"})
+	}
+
+	// ถ้าเป็นรายการถอน (Withdraw) แล้วโดน Reject ต้องคืนเงินเข้า Credit ลูกค้า
+	if transaction.Type == "withdraw" {
+		transaction.User.Credit += transaction.Amount
+		database.DB.Save(&transaction.User)
+	}
+
+	// อัปเดตสถานะเป็น rejected
+	transaction.Status = "rejected"
+	database.DB.Save(&transaction)
+
+	return c.JSON(fiber.Map{"message": "ปฏิเสธรายการสำเร็จและคืนเครดิตแล้ว"})
+}
+
+func RequestWithdraw(c *fiber.Ctx) error {
+	// 1. รับค่าจาก Request
+	type WithdrawReq struct {
+		Amount float64 `json:"amount"`
+	}
+	var req WithdrawReq
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
+	}
+
+	// 2. ดึง User ID จาก Middleware JWT
+	userID := c.Locals("user_id").(uint)
+
+	// 3. เริ่ม Transaction ฐานข้อมูล (DB Transaction)
+	// เพื่อให้มั่นใจว่าถ้าตัดเงินผ่าน ต้องบันทึกรายการสำเร็จด้วย
+	tx := database.DB.Begin()
+
+	var user models.User
+	if err := tx.First(&user, userID).Error; err != nil {
+		tx.Rollback()
+		return c.Status(404).JSON(fiber.Map{"error": "ไม่พบผู้ใช้งาน"})
+	}
+
+	// 4. ตรวจสอบเงื่อนไข (ขั้นต่ำ 100 และ เครดิตต้องพอ)
+	if req.Amount < 100 {
+		tx.Rollback()
+		return c.Status(400).JSON(fiber.Map{"error": "ถอนขั้นต่ำ 100 บาท"})
+	}
+	if user.Credit < req.Amount {
+		tx.Rollback()
+		return c.Status(400).JSON(fiber.Map{"error": "ยอดเงินคงเหลือไม่เพียงพอ"})
+	}
+
+	// 5. ตัดเครดิตผู้ใช้งานทันที
+	user.Credit -= req.Amount
+	if err := tx.Save(&user).Error; err != nil {
+		tx.Rollback()
+		return c.Status(500).JSON(fiber.Map{"error": "ตัดเครดิตล้มเหลว"})
+	}
+
+	// 6. บันทึกรายการถอน (Status: pending)
+	newTx := models.Transaction{
+		UserID: userID,
+		Amount: req.Amount,
+		Type:   "withdraw",
+		Status: "pending",
+	}
+	if err := tx.Create(&newTx).Error; err != nil {
+		tx.Rollback()
+		return c.Status(500).JSON(fiber.Map{"error": "บันทึกรายการล้มเหลว"})
+	}
+
+	// Commit รายการทั้งหมด
+	tx.Commit()
+
+	return c.JSON(fiber.Map{
+		"message":    "ส่งคำขอถอนเงินสำเร็จ",
+		"new_credit": user.Credit,
+	})
 }
