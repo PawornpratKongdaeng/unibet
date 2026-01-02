@@ -22,10 +22,10 @@ func main() {
 
 	// 3. Middleware: CORS (แก้ไขตรงนี้ ✅)
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "*", // อนุญาตทุกที่
+		AllowOrigins:     "https://unibet-lyart.vercel.app", // อนุญาตทุกที่
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
 		AllowMethods:     "GET, POST, HEAD, PUT, DELETE, PATCH",
-		AllowCredentials: false, // เปลี่ยนเป็น false ตรงนี้!
+		AllowCredentials: true, // เปลี่ยนเป็น false ตรงนี้!
 	}))
 
 	// 4. Setup Routes
