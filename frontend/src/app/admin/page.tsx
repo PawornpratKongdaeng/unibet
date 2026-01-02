@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect,cloneElement } from "react";
+import { useState, useEffect, cloneElement } from "react";
 import Link from "next/link";
 import { 
   Users, 
@@ -14,16 +14,31 @@ import {
   ChevronRight,
   Database,
   Globe
-} from "lucide-react"; // นำเข้าไอคอน Line-Outline
-import { apiFetch } from "@/lib/api"; // ✅ ใช้ apiFetch ตัวเดียวจบ
+} from "lucide-react"; 
+import { apiFetch } from "@/lib/api"; 
 
 export default function AdminPage() {
   const [stats, setStats] = useState<any>(null);
+  const [isReady, setIsReady] = useState(false); // ✅ เพิ่ม State เช็คความพร้อม
 
   useEffect(() => {
     const fetchStats = async () => {
+      // 1. ✅ เช็คสิทธิ์จาก LocalStorage ก่อน
+      const token = localStorage.getItem("token");
+      const userStr = localStorage.getItem("user");
+      const user = userStr ? JSON.parse(userStr) : null;
+
+      // ถ้าไม่มี Token หรือไม่ใช่ Admin ให้ส่งกลับหน้า Login ทันที
+      if (!token || user?.role !== "admin") {
+        window.location.href = "/login";
+        return;
+      }
+
+      // ยืนยันว่าเป็น Admin จริง ให้แสดงผลหน้าเว็บได้
+      setIsReady(true); 
+
       try {
-        // ✅ ใช้ apiFetch ซึ่งจัดการ Base URL และ Token ให้แล้ว
+        // 2. ✅ ยิง API เมื่อมั่นใจว่ามีสิทธิ์
         const [usersRes, betsRes, txsRes, financeRes] = await Promise.all([
           apiFetch("/admin/users"),
           apiFetch("/admin/bets"),
@@ -31,7 +46,9 @@ export default function AdminPage() {
           apiFetch("/admin/finance/summary"),
         ]);
 
-        // แปลงเป็น JSON
+        // ตรวจสอบเบื้องต้น (ถ้าตัวหลักพัง ไม่ต้องทำต่อ)
+        if (!usersRes.ok) return;
+
         const [users, bets, txs, finance] = await Promise.all([
           usersRes.json(),
           betsRes.json(),
@@ -40,17 +57,29 @@ export default function AdminPage() {
         ]);
 
         setStats({
-          totalUsers: users.length || 0,
-          totalBets: bets.length || 0,
-          pendingTxs: txs.length || 0,
-          todayProfit: (finance.total_deposit || 0) - (finance.total_withdraw || 0)
+          totalUsers: users?.length || 0,
+          totalBets: bets?.length || 0,
+          pendingTxs: txs?.length || 0,
+          todayProfit: (finance?.total_deposit || 0) - (finance?.total_withdraw || 0)
         });
       } catch (err) {
         console.error("Fetch error:", err);
       }
     };
+
     fetchStats();
   }, []);
+
+  // ✅ ถ้ายังตรวจสอบสิทธิ์ไม่เสร็จ ให้แสดงหน้า Loading ป้องกัน API ยิงตัดหน้า
+  if (!isReady) {
+    return (
+      <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center space-y-4">
+        <div className="w-12 h-12 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-yellow-500 font-black uppercase tracking-[0.3em] text-[10px]">Verifying Admin Access...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-10 animate-in fade-in duration-700">
 
@@ -92,7 +121,7 @@ export default function AdminPage() {
   );
 }
 
-// --- Sub Components ---
+// --- Sub Components (ห้ามลบ) ---
 
 function StatCard({ title, value, unit, icon, color, bg, border }: any) {
   return (
@@ -101,7 +130,6 @@ function StatCard({ title, value, unit, icon, color, bg, border }: any) {
         {icon}
       </div>
       <div className={`${color} mb-6`}>
-        {/* Render Icon แบบกำหนดขนาด */}
         {cloneElement(icon, { size: 28, strokeWidth: 2.5 })}
       </div>
       <p className="text-zinc-500 text-[10px] font-black uppercase tracking-[0.2em] mb-1">{title}</p>
