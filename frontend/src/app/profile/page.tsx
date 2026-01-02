@@ -9,7 +9,7 @@ import { apiFetch } from "@/lib/api";
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { balance, refreshBalance } = useWallet();
+  const { balance, refreshBalance } = useWallet() as any;
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import useSWR from "swr";
 import Header from "@/components/Header";
 import { apiFetch } from "@/lib/api";
@@ -9,31 +9,49 @@ const fetcher = (url: string) => apiFetch(url).then(res => res.json());
 
 export default function WithdrawPage() {
   const [amount, setAmount] = useState("");
+  const [mounted, setMounted] = useState(false);
+  
+  // ดึงข้อมูล User Profile
   const { data: user, mutate } = useSWR("/user/profile", fetcher);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // ✅ เปลี่ยนจาก user.credit เป็น user.balance ตามข้อมูลที่ Backend ส่งมาจริง
+  const formattedBalance = user?.balance 
+    ? user.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : "0.00";
+
+  const quickAmounts = [100, 500, 1000, 5000];
 
   const handleWithdraw = async (e: React.FormEvent) => {
     e.preventDefault();
     const withdrawAmount = Number(amount);
 
-    if (withdrawAmount > (user?.credit || 0)) {
-      return Swal.fire({ icon: 'error', title: 'ยอดเงินไม่เพียงพอ', background: '#0f172a', color: '#fff' });
+    // ✅ ตรวจสอบโดยใช้ user.balance
+    if (withdrawAmount < 100) {
+      return Swal.fire({ icon: 'error', title: 'ถอนขั้นต่ำ ฿100', background: '#09090b', color: '#fff', confirmButtonColor: '#ef4444' });
+    }
+
+    if (withdrawAmount > (user?.balance || 0)) {
+      return Swal.fire({ icon: 'error', title: 'ยอดเงินไม่เพียงพอ', background: '#09090b', color: '#fff', confirmButtonColor: '#ef4444' });
     }
 
     const result = await Swal.fire({
       title: 'ยืนยันการถอนเงิน?',
-      text: `คุณต้องการถอนเงินจำนวน ฿${withdrawAmount.toLocaleString()} ใช่หรือไม่?`,
-      icon: 'question',
+      text: `ยอดถอน ฿${withdrawAmount.toLocaleString()} จะถูกโอนเข้าบัญชีคุณ`,
+      icon: 'warning',
       showCancelButton: true,
-      confirmButtonColor: '#e11d48',
-      cancelButtonColor: '#334155',
-      confirmButtonText: 'ยืนยันถอนเงิน',
-      cancelButtonText: 'ยกเลิก',
-      background: '#0f172a',
+      confirmButtonText: 'CONFIRM',
+      cancelButtonText: 'CANCEL',
+      confirmButtonColor: '#ef4444',
+      background: '#09090b',
       color: '#fff'
     });
 
     if (result.isConfirmed) {
-      Swal.fire({ title: 'กำลังดำเนินการ...', didOpen: () => Swal.showLoading(), background: '#0f172a', color: '#fff' });
+      Swal.fire({ title: 'Processing...', didOpen: () => Swal.showLoading(), background: '#09090b', color: '#fff' });
 
       try {
         const res = await apiFetch("/transaction/withdraw", {
@@ -43,55 +61,107 @@ export default function WithdrawPage() {
 
         if (!res.ok) throw new Error();
 
-        Swal.fire({ icon: 'success', title: 'ส่งคำขอถอนเงินสำเร็จ', text: 'ระบบกำลังดำเนินการโอนเงินเข้าบัญชีท่าน', background: '#0f172a', color: '#fff' });
+        Swal.fire({ icon: 'success', title: 'SUCCESS!', text: 'ส่งคำขอถอนเงินสำเร็จ', background: '#09090b', color: '#fff', timer: 2000, showConfirmButton: false });
         setAmount("");
-        mutate(); // รีเฟรชยอดเงิน
+        mutate(); 
       } catch (err) {
-        Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: 'กรุณาติดต่อเจ้าหน้าที่', background: '#0f172a', color: '#fff' });
+        Swal.fire({ icon: 'error', title: 'Error', text: 'เกิดข้อผิดพลาด กรุณาลองใหม่', background: '#09090b', color: '#fff' });
       }
     }
   };
 
   return (
-    <main className="min-h-screen bg-[#020617] text-white pb-20">
+    <main className="min-h-screen bg-[#020202] text-white pb-20 font-sans">
       <Header />
-      <div className="max-w-md mx-auto px-6 pt-10">
-        <h1 className="text-3xl font-black italic uppercase mb-2">Withdraw <span className="text-rose-500">Credit</span></h1>
-        
-        {/* ยอดเงินปัจจุบัน */}
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl mb-8 flex justify-between items-end shadow-xl">
-           <div>
-              <p className="text-[9px] text-slate-500 font-black uppercase mb-1">ยอดเงินที่ถอนได้</p>
-              <p className="text-3xl font-mono font-black text-white">฿{user?.credit?.toLocaleString() || '0'}</p>
-           </div>
-           <div className="bg-rose-500/10 text-rose-500 px-3 py-1 rounded-lg text-[10px] font-black border border-rose-500/20">
-              AVAILABLE
-           </div>
+      
+      <div className="max-w-md mx-auto px-6 pt-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="mb-8">
+          <h1 className="text-4xl font-black italic uppercase tracking-tighter">
+            Withdraw <span className="text-rose-500">Credit</span>
+          </h1>
         </div>
 
+        {/* 1. ยอดเงินคงเหลือ */}
+        <div className="relative overflow-hidden bg-zinc-900/50 border border-zinc-800 p-8 rounded-[2.5rem] mb-6 shadow-2xl">
+          <div className="absolute top-0 right-0 p-6 opacity-10">
+             <span className="text-5xl">💸</span>
+          </div>
+          <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest mb-1">Available Balance</p>
+          <div className="flex items-baseline gap-2">
+            <span className="text-rose-500 text-2xl font-black">฿</span>
+            <span className="text-5xl font-black tracking-tighter">
+              {/* ✅ ใช้ formattedBalance ที่ดึงจาก user.balance */}
+              {mounted ? formattedBalance : "0.00"}
+            </span>
+          </div>
+        </div>
+
+        {/* 2. ข้อมูลธนาคาร */}
+        <div className="bg-gradient-to-br from-zinc-800 to-zinc-950 border border-white/5 p-6 rounded-[2rem] mb-8 relative overflow-hidden shadow-xl">
+          <div className="flex justify-between items-start mb-6">
+            <div className="bg-white/10 px-3 py-1 rounded-full border border-white/10 text-[9px] font-black uppercase text-zinc-300">Target Account</div>
+          </div>
+          <p className="text-2xl font-mono font-black tracking-widest text-white mb-1">
+            {user?.bank_account || '000-0-00000-0'}
+          </p>
+          <div className="flex justify-between items-end">
+            <div>
+              <p className="text-[10px] text-zinc-500 font-bold uppercase">Account Holder</p>
+              <p className="font-black text-sm uppercase">{user?.first_name} {user?.last_name}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] text-zinc-500 font-bold uppercase">Bank</p>
+              <p className="font-black text-sm text-rose-500">{user?.bank_name || 'K-BANK'}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* 3. ฟอร์มถอนเงิน */}
         <form onSubmit={handleWithdraw} className="space-y-6">
-          <div className="bg-[#0f172a] p-5 rounded-[1.5rem] border border-slate-800 relative overflow-hidden">
-             <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-full -mr-10 -mt-10"></div>
-             <p className="text-[9px] text-slate-500 font-black uppercase mb-3">บัญชีรับเงินของคุณ</p>
-             <p className="font-black text-base text-white uppercase">{user?.bank_name || 'K-BANK'}</p>
-             <p className="font-mono text-xl tracking-tighter text-slate-400">{user?.bank_account || '000-0-00000-0'}</p>
-             <p className="text-[10px] text-slate-500 mt-2 font-bold">{user?.first_name} {user?.last_name}</p>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center px-2">
+              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Withdraw Amount</label>
+              <button 
+                type="button"
+                // ✅ แก้เป็น user.balance
+                onClick={() => setAmount(user?.balance?.toString() || "0")}
+                className="text-[10px] font-black text-rose-500 uppercase hover:text-rose-400"
+              >
+                Max Amount
+              </button>
+            </div>
+            
+            <div className="relative">
+              <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-500 font-black text-xl">฿</span>
+              <input 
+                type="number" 
+                placeholder="0.00"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-800 p-6 pl-12 rounded-[1.5rem] text-3xl font-black outline-none focus:border-rose-500 transition-all"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-4 gap-2">
+              {quickAmounts.map((val) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setAmount(val.toString())}
+                  className="py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-[11px] font-black hover:bg-zinc-800 transition-all"
+                >
+                  +{val.toLocaleString()}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-500 uppercase ml-2">ระบุจำนวนเงิน</label>
-            <input 
-              type="number" 
-              placeholder="ขั้นต่ำ 100"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-800 p-5 rounded-2xl text-2xl font-mono outline-none focus:border-rose-500 transition-all"
-              required
-            />
-          </div>
-
-          <button className="w-full bg-white text-black font-black py-5 rounded-2xl hover:bg-slate-200 transition-all uppercase text-sm shadow-xl active:scale-95">
-            Withdraw Now
+          <button className="group relative w-full bg-white text-black font-black py-6 rounded-[1.5rem] overflow-hidden transition-all hover:scale-[1.02] active:scale-95">
+            <div className="absolute inset-0 bg-rose-500 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+            <span className="relative group-hover:text-white transition-colors duration-300 uppercase italic">
+              Confirm Withdrawal
+            </span>
           </button>
         </form>
       </div>

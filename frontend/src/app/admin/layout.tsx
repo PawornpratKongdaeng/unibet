@@ -3,6 +3,11 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import Swal from "sweetalert2";
+import { 
+  LayoutDashboard, Users, BadgeDollarSign, 
+  FileText, Gavel, Landmark, Settings, 
+  LogOut, Menu, X, ShieldCheck, Loader2
+} from "lucide-react";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -27,9 +32,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       if (data.role !== 'admin') {
         await Swal.fire({
           icon: 'error',
-          title: 'Access Denied',
-          text: 'เฉพาะผู้ดูแลระบบเท่านั้น!',
-          background: '#18181b', color: '#fff', confirmButtonColor: '#fff'
+          title: 'ACCESS DENIED',
+          text: 'เฉพาะผู้ดูแลระบบที่มีสิทธิ์ระดับสูงเท่านั้น!',
+          background: '#09090b', color: '#fff', confirmButtonColor: '#fbbf24'
         });
         localStorage.removeItem("token");
         router.push("/login");
@@ -45,64 +50,108 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useEffect(() => { checkAuth(); }, [checkAuth]);
 
   if (isLoading) return (
-    <div className="min-h-screen bg-black flex flex-col items-center justify-center">
-      <div className="w-16 h-16 border-4 border-zinc-800 border-t-white rounded-full animate-spin mb-4"></div>
-      <p className="text-zinc-500 font-black text-xs uppercase tracking-widest animate-pulse">Verifying Access...</p>
+    <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4">
+      <Loader2 className="animate-spin text-amber-500" size={48} />
+      <p className="text-zinc-600 font-black text-[10px] uppercase tracking-[0.5em] animate-pulse">
+        Verifying Security Clearance...
+      </p>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-black text-white flex relative overflow-hidden font-sans">
+    <div className="min-h-screen bg-[#050505] text-white flex overflow-hidden font-sans">
+      
+      {/* Mobile Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40 lg:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-zinc-950/95 backdrop-blur-xl border-r border-zinc-900 transform transition-all duration-500 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0 lg:static`}>
-        <div className="h-full flex flex-col p-6">
-          <div className="mb-10 flex items-center gap-3 px-2">
-            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center font-black text-black text-xl shadow-[0_0_20px_rgba(255,255,255,0.3)]">A</div>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-80 bg-zinc-950 border-r border-zinc-900/50 transform transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1) ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0 lg:static`}>
+        <div className="h-full flex flex-col p-8">
+          
+          {/* Logo Section */}
+          <div className="mb-12 flex items-center gap-4 px-2">
+            <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center font-black text-black text-2xl shadow-[0_0_30px_rgba(255,255,255,0.15)] italic">
+              S
+            </div>
             <div>
-              <h1 className="text-xl font-black text-white tracking-tighter leading-none">SOCCER</h1>
-              <p className="text-[10px] text-zinc-500 font-black tracking-[0.2em]">ADMIN PANEL</p>
+              <h1 className="text-2xl font-black text-white tracking-tighter leading-none italic">
+                SOCCER<span className="text-zinc-600">.</span>
+              </h1>
+              <p className="text-[10px] text-amber-500 font-black tracking-[0.3em] mt-1">MANAGEMENT</p>
             </div>
           </div>
           
-          <nav className="flex-1 space-y-1">
-            <NavItem icon="🏠" label="หน้าหลัก" sublabel="Overview" href="/admin" active={pathname === "/admin"} />
-            <NavItem icon="👥" label="จัดการสมาชิก" sublabel="Users" href="/admin/users" active={pathname.includes("/users")} />
-            <NavItem icon="💸" label="รายการฝาก-ถอน" sublabel="Transactions" href="/admin/transactions" active={pathname.includes("/transactions")} />
-            <NavItem icon="📊" label="สรุปการเงิน" sublabel="Finance" href="/admin/finance" active={pathname.includes("/finance")} />
-            <NavItem icon="📑" label="รายงานเดิมพัน" sublabel="Bets" href="/admin/bets" active={pathname.includes("/bets")} />
-            <NavItem icon="⚙️" label="ตั้งค่าบอล" sublabel="Settlement" href="/admin/settlement" active={pathname.includes("/settlement")} />
-            <NavItem icon="🏦" label="ตั้งค่าธนาคาร" sublabel="Bank Settings" href="/admin/bank-settings" active={pathname.includes("/bank-settings")} />
-            <NavItem icon="⚙️" label="ตั้งค่าระบบ" sublabel="Settings" href="/admin/settings" active={pathname.includes("/settings")} />
+          {/* Navigation */}
+          <nav className="flex-1 space-y-2 overflow-y-auto no-scrollbar">
+            <NavItem icon={<LayoutDashboard size={20}/>} label="หน้าหลัก" sublabel="Overview" href="/admin" active={pathname === "/admin"} />
+            <NavItem icon={<Users size={20}/>} label="จัดการสมาชิก" sublabel="Users Control" href="/admin/users" active={pathname.includes("/users")} />
+            <NavItem icon={<BadgeDollarSign size={20}/>} label="สรุปการเงิน" sublabel="Finance Dept" href="/admin/finance" active={pathname.includes("/finance")} />
+            <NavItem icon={<FileText size={20}/>} label="รายงานเดิมพัน" sublabel="Betting Logs" href="/admin/bets" active={pathname.includes("/bets")} />
+            <NavItem icon={<Gavel size={20}/>} label="จัดการผลบอล" sublabel="Settlement" href="/admin/settlement" active={pathname.includes("/settlement")} />
+            <NavItem icon={<Landmark size={20}/>} label="ตั้งค่าธนาคาร" sublabel="Bank API" href="/admin/bank-settings" active={pathname.includes("/bank-settings")} />
+            <NavItem icon={<Settings size={20}/>} label="ตั้งค่าระบบ" sublabel="System Config" href="/admin/settings" active={pathname.includes("/settings")} />
           </nav>
 
-          <button onClick={() => { localStorage.removeItem("token"); router.push("/login"); }} className="w-full mt-auto p-4 text-xs font-black text-zinc-500 hover:text-white bg-zinc-900/50 rounded-2xl border border-zinc-800 transition-all uppercase tracking-widest hover:bg-rose-500/10 hover:border-rose-500/50">
-            Logout System
+          {/* Logout Button */}
+          <button 
+            onClick={() => { localStorage.removeItem("token"); router.push("/login"); }} 
+            className="group w-full mt-8 p-5 text-[10px] font-black text-zinc-500 hover:text-rose-500 bg-zinc-900/30 rounded-[2rem] border border-zinc-900 transition-all uppercase tracking-widest hover:border-rose-500/30 flex items-center justify-center gap-3"
+          >
+            <LogOut size={16} className="group-hover:-translate-x-1 transition-transform" />
+            Terminate Session
           </button>
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        <header className="h-20 border-b border-zinc-900 bg-black/50 backdrop-blur-md flex items-center px-8 shrink-0">
-          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="lg:hidden p-2 text-white mr-4">☰</button>
-          <div className="flex-1">
-            <h2 className="text-sm font-black text-zinc-400 uppercase tracking-[0.2em] flex items-center gap-2">
-               <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-               System Online
-            </h2>
-          </div>
-          <div className="flex items-center gap-4 text-right">
-            <div className="hidden sm:block">
-              <p className="text-[10px] font-black text-zinc-600 uppercase">Super Admin</p>
-              <p className="text-sm font-bold text-white">{adminInfo?.username}</p>
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0 h-screen relative">
+        
+        {/* Header */}
+        <header className="h-24 border-b border-zinc-900/50 bg-black/20 backdrop-blur-xl flex items-center justify-between px-8 lg:px-12 shrink-0 z-30">
+          <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-3 bg-zinc-900 rounded-xl text-white">
+            <Menu size={20} />
+          </button>
+          
+          <div className="flex-1 hidden md:block">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)] animate-pulse"></div>
+              </div>
+              <h2 className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.3em] italic">
+                Central Server: <span className="text-zinc-300 ml-1">Connected</span>
+              </h2>
             </div>
-            <div className="w-10 h-10 bg-zinc-900 rounded-xl border border-zinc-800 flex items-center justify-center italic font-black text-white">
-              {adminInfo?.username?.charAt(0).toUpperCase()}
+          </div>
+
+          <div className="flex items-center gap-6">
+            <div className="text-right hidden sm:block">
+              <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-0.5 flex items-center justify-end gap-1">
+                <ShieldCheck size={10} /> Verified Admin
+              </p>
+              <p className="text-sm font-black text-white italic tracking-tight uppercase">
+                {adminInfo?.username || 'ADMINISTRATOR'}
+              </p>
+            </div>
+            <div className="w-12 h-12 bg-gradient-to-br from-zinc-800 to-black rounded-2xl border border-zinc-800 flex items-center justify-center shadow-2xl relative group cursor-pointer">
+               <span className="font-black text-white italic text-lg group-hover:scale-110 transition-transform">
+                {adminInfo?.username?.charAt(0).toUpperCase()}
+               </span>
+               <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-4 border-black rounded-full"></div>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 p-6 lg:p-10 overflow-y-auto scrollbar-hide">
-          <div className="max-w-7xl mx-auto">
+        {/* Dynamic Page Content */}
+        <main className="flex-1 p-6 lg:p-12 overflow-y-auto scrollbar-hide relative">
+          {/* Subtle Background Glow */}
+          <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-amber-500/5 blur-[120px] rounded-full -z-10 pointer-events-none"></div>
+          
+          <div className="max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
              {children}
           </div>
         </main>
@@ -115,18 +164,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 function NavItem({ icon, label, sublabel, href, active }: any) {
   return (
     <Link href={href} className="block w-full">
-      <div className={`flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 ${
+      <div className={`flex items-center gap-5 px-6 py-5 rounded-[2rem] transition-all duration-500 group ${
         active 
-          ? "bg-white text-black font-black scale-[1.02] shadow-[0_10px_25px_rgba(255,255,255,0.1)]" 
-          : "text-zinc-500 hover:text-white hover:bg-zinc-900"
+          ? "bg-white text-black font-black scale-[1.02] shadow-[0_20px_40px_rgba(255,255,255,0.1)]" 
+          : "text-zinc-500 hover:text-white hover:bg-zinc-900/50 hover:translate-x-1"
       }`}>
-        <span className="text-xl">{icon}</span>
+        <div className={`${active ? "text-black" : "text-zinc-600 group-hover:text-amber-400"} transition-colors`}>
+          {icon}
+        </div>
         <div className="text-left">
-          <p className="text-sm font-bold leading-none">{label}</p>
-          <p className={`text-[9px] font-black uppercase tracking-widest mt-1 ${active ? "text-zinc-400" : "text-zinc-600"}`}>
+          <p className="text-xs font-black leading-none uppercase tracking-tighter italic">{label}</p>
+          <p className={`text-[8px] font-black uppercase tracking-[0.2em] mt-1.5 transition-colors ${
+            active ? "text-zinc-500" : "text-zinc-700 group-hover:text-zinc-500"
+          }`}>
             {sublabel}
           </p>
         </div>
+        {active && (
+          <div className="ml-auto w-1.5 h-1.5 bg-black rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)]"></div>
+        )}
       </div>
     </Link>
   );

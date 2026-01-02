@@ -72,7 +72,6 @@ export default function HistoryPage() {
             </div>
           ) : bets.length > 0 ? (
             bets.map((bet: any, index: number) => {
-              // ดึงชื่อทีมจากข้อมูล Preload (Match)
               const homeName = bet.Match?.home_team || bet.home_team || 'Unknown Home';
               const awayName = bet.Match?.away_team || bet.away_team || 'Unknown Away';
               

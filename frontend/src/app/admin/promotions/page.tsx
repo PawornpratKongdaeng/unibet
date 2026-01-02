@@ -1,8 +1,7 @@
 "use client";
-import { useState } from "react";
 import useSWR from "swr";
 import { apiFetch } from "@/lib/api";
-import Swal from "sweetalert2";
+import { Gift, Percent, Trash2, Edit3, Plus, Power } from "lucide-react";
 
 export default function PromotionPage() {
   const { data: promos, mutate } = useSWR("/admin/promotions", (url) => apiFetch(url).then(res => res.json()));
@@ -17,49 +16,53 @@ export default function PromotionPage() {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
-      <div className="flex justify-between items-end">
+    <div className="space-y-10 animate-in fade-in duration-700">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
         <div>
-          <h1 className="text-4xl font-black uppercase italic tracking-tighter text-white">
-            Promotion <span className="text-zinc-500">Settings</span>
+          <h1 className="text-5xl font-black uppercase italic tracking-tighter text-white">
+            Campaign <span className="text-rose-500">Center</span>
           </h1>
-          <p className="text-zinc-500 text-sm font-bold uppercase tracking-widest">สร้างเงื่อนไขและโบนัสสำหรับสมาชิก</p>
+          <p className="text-zinc-500 text-[10px] font-black uppercase tracking-[0.3em] mt-2">บริหารจัดการโบนัสและข้อเสนอพิเศษ</p>
         </div>
-        <button className="px-8 py-4 bg-white text-black font-black rounded-2xl hover:bg-amber-400 transition-all uppercase text-xs">
-          + Create New Promo
+        <button className="flex items-center gap-3 px-8 py-4 bg-white text-black font-black rounded-2xl hover:bg-rose-500 hover:text-white transition-all uppercase text-[10px] tracking-widest shadow-lg">
+          <Plus size={16} strokeWidth={3} /> Create Promotion
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {promos?.map((promo: any) => (
-          <div key={promo.id} className={`p-8 rounded-[2.5rem] border transition-all ${promo.status === 'active' ? 'bg-zinc-900/50 border-zinc-800' : 'bg-zinc-950 border-zinc-900 opacity-60'}`}>
-            <div className="flex justify-between items-start mb-6">
-               <div className="w-12 h-12 bg-amber-500/10 text-amber-500 rounded-2xl flex items-center justify-center text-2xl">🎁</div>
-               <button 
-                 onClick={() => toggleStatus(promo.id, promo.status)}
-                 className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase border ${promo.status === 'active' ? 'border-emerald-500 text-emerald-500' : 'border-zinc-700 text-zinc-700'}`}
-               >
-                 {promo.status}
+          <div key={promo.id} className={`group relative p-8 rounded-[3rem] border transition-all duration-500 ${promo.status === 'active' ? 'bg-zinc-900/40 border-zinc-800 shadow-[0_20px_40px_rgba(0,0,0,0.4)]' : 'bg-zinc-950 border-zinc-900 opacity-50 grayscale'}`}>
+            
+            <div className="flex justify-between items-start mb-8">
+               <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl ${promo.status === 'active' ? 'bg-rose-500 text-white shadow-[0_0_20px_rgba(244,63,94,0.3)]' : 'bg-zinc-800 text-zinc-600'}`}>
+                  {promo.bonus_type === 'percent' ? <Percent size={24} strokeWidth={3} /> : <Gift size={24} strokeWidth={3} />}
+               </div>
+               <button onClick={() => toggleStatus(promo.id, promo.status)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-tighter border transition-all ${promo.status === 'active' ? 'border-rose-500/50 text-rose-500 hover:bg-rose-500 hover:text-white' : 'border-zinc-800 text-zinc-700'}`}>
+                 <Power size={12} /> {promo.status}
                </button>
             </div>
             
-            <h3 className="text-xl font-black text-white mb-2">{promo.name}</h3>
-            <p className="text-zinc-500 text-sm font-medium mb-6">{promo.description}</p>
+            <h3 className="text-2xl font-black text-white mb-2 italic uppercase tracking-tighter">{promo.name}</h3>
+            <p className="text-zinc-500 text-xs font-bold leading-relaxed mb-8 h-10 overflow-hidden line-clamp-2">{promo.description}</p>
             
-            <div className="space-y-3 mb-8">
-              <div className="flex justify-between text-xs font-bold uppercase">
-                <span className="text-zinc-600">Bonus Amount:</span>
-                <span className="text-white">{promo.bonus_type === 'percent' ? `${promo.bonus_value}%` : `฿${promo.bonus_value}`}</span>
+            <div className="grid grid-cols-2 gap-4 mb-8">
+              <div className="bg-black/40 p-4 rounded-2xl border border-zinc-900/50">
+                <span className="text-zinc-600 text-[9px] font-black uppercase tracking-widest block mb-1">Bonus</span>
+                <span className="text-lg font-black text-white italic">{promo.bonus_type === 'percent' ? `${promo.bonus_value}%` : `฿${promo.bonus_value}`}</span>
               </div>
-              <div className="flex justify-between text-xs font-bold uppercase">
-                <span className="text-zinc-600">Turnover Req:</span>
-                <span className="text-white text-lg">{promo.turnover_multiplier}X</span>
+              <div className="bg-black/40 p-4 rounded-2xl border border-zinc-900/50">
+                <span className="text-zinc-600 text-[9px] font-black uppercase tracking-widest block mb-1">Turnover</span>
+                <span className="text-lg font-black text-rose-500 italic">{promo.turnover_multiplier}X</span>
               </div>
             </div>
 
-            <div className="flex gap-2">
-               <button className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-black text-[10px] uppercase transition-all">Edit</button>
-               <button className="px-4 py-3 bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white rounded-xl font-black text-[10px] uppercase transition-all">Delete</button>
+            <div className="flex gap-3">
+               <button className="flex-1 py-4 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2">
+                 <Edit3 size={14} /> Edit
+               </button>
+               <button className="p-4 bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white rounded-2xl transition-all">
+                 <Trash2 size={18} />
+               </button>
             </div>
           </div>
         ))}

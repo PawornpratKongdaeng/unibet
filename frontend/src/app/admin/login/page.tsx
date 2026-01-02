@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { showToast } from "@/lib/sweetAlert"; // ใช้ SweetAlert ที่คุณมี
+import { showToast } from "@/lib/sweetAlert";
+import { ShieldCheck, Lock, User, ChevronRight } from "lucide-react";
 
 export default function AdminLoginPage() {
   const [username, setUsername] = useState("");
@@ -23,73 +24,79 @@ export default function AdminLoginPage() {
       const data = await res.json();
 
       if (res.ok) {
-        // 🚨 จุดสำคัญ: เช็ค Role ทันที
         if (data.user.role !== "admin") {
-          showToast("error", "เข้าสู่ระบบปฏิเสธ: เฉพาะผู้ดูแลเท่านั้น");
+          showToast("error", "ACCESS DENIED: ADMIN ONLY");
           setLoading(false);
           return;
         }
-
-        // บันทึกข้อมูลลง LocalStorage
         localStorage.setItem("token", data.token);
         localStorage.setItem("user", JSON.stringify(data.user));
-
-        showToast("success", "ยินดีต้อนรับท่านผู้ดูแล!");
-        router.push("/admin"); // ส่งไปหน้า Dashboard ของ Admin
+        showToast("success", "ACCESS GRANTED. WELCOME.");
+        router.push("/admin");
       } else {
-        showToast("error", data.error || "รหัสผ่านไม่ถูกต้อง");
+        showToast("error", data.error || "INVALID CREDENTIALS");
       }
     } catch (err) {
-      showToast("error", "ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
+      showToast("error", "CONNECTION FAILED");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0f172a] p-4">
-      <div className="max-w-md w-full bg-[#1e293b] rounded-2xl shadow-2xl border border-red-500/30 p-8">
+    <div className="min-h-screen flex items-center justify-center bg-black relative overflow-hidden">
+      {/* Background Decor */}
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-rose-500/10 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/2"></div>
+      <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-rose-500/5 rounded-full blur-[120px] translate-y-1/2 -translate-x-1/2"></div>
+
+      <div className="max-w-md w-full mx-4 relative z-10">
         <div className="text-center mb-10">
-          <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-yellow-500 italic">
-            ADMIN PANEL
+          <div className="w-20 h-20 bg-zinc-900 border-2 border-zinc-800 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-2xl">
+             <ShieldCheck size={40} className="text-rose-500" strokeWidth={2.5} />
+          </div>
+          <h1 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">
+            Soccer <span className="text-rose-500">HQ</span>
           </h1>
-          <p className="text-gray-400 mt-2">กรุณายืนยันตัวตนเพื่อเข้าสู่ระบบหลังบ้าน</p>
+          <p className="text-zinc-600 text-[10px] font-black uppercase tracking-[0.4em] mt-3">Terminal Access Required</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Username</label>
-            <input
-              type="text"
-              required
-              className="w-full bg-[#334155] border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-500 transition-all"
-              placeholder="ชื่อผู้ดูแล"
-              onChange={(e) => setUsername(e.target.value)}
-            />
-          </div>
+        <div className="bg-zinc-950/50 backdrop-blur-xl rounded-[2.5rem] border border-zinc-900 p-10 shadow-2xl">
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div>
+              <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 px-1">Identity</label>
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-zinc-600 group-focus-within:text-rose-500 transition-colors">
+                  <User size={18} />
+                </div>
+                <input type="text" required className="w-full bg-zinc-900/50 border border-zinc-800 rounded-2xl pl-12 pr-4 py-4 text-white font-bold focus:outline-none focus:border-rose-500 focus:bg-zinc-900 transition-all placeholder:text-zinc-700" placeholder="ADMIN USERNAME" onChange={(e) => setUsername(e.target.value)} />
+              </div>
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Password</label>
-            <input
-              type="password"
-              required
-              className="w-full bg-[#334155] border border-gray-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-500 transition-all"
-              placeholder="••••••••"
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
+            <div>
+              <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 px-1">Access Key</label>
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-zinc-600 group-focus-within:text-rose-500 transition-colors">
+                  <Lock size={18} />
+                </div>
+                <input type="password" required className="w-full bg-zinc-900/50 border border-zinc-800 rounded-2xl pl-12 pr-4 py-4 text-white font-bold focus:outline-none focus:border-rose-500 focus:bg-zinc-900 transition-all placeholder:text-zinc-700" placeholder="••••••••" onChange={(e) => setPassword(e.target.value)} />
+              </div>
+            </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-gradient-to-r from-red-600 to-red-800 hover:from-red-500 hover:to-red-700 text-white font-bold py-3 rounded-lg shadow-lg transform active:scale-95 transition-all"
-          >
-            {loading ? "กำลังตรวจสอบ..." : "เข้าสู่ระบบผู้ดูแล"}
-          </button>
-        </form>
+            <button type="submit" disabled={loading} className="w-full bg-white hover:bg-rose-500 text-black hover:text-white font-black py-5 rounded-2xl shadow-xl transition-all uppercase text-[10px] tracking-[0.2em] flex items-center justify-center gap-2 group overflow-hidden">
+              {loading ? (
+                <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <>
+                  Establish Connection
+                  <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
+            </button>
+          </form>
+        </div>
 
-        <div className="mt-8 text-center text-xs text-gray-500">
-          &copy; 2025 TideKung Admin System v2.0
+        <div className="mt-10 text-center">
+           <p className="text-[9px] font-black text-zinc-700 uppercase tracking-[0.3em]">&copy; 2025 SOCCER COMMAND v3.1.0 // ENCRYPTED ACCESS</p>
         </div>
       </div>
     </div>

@@ -1,16 +1,25 @@
+"use client";
 import Image from 'next/image';
 
 interface MatchCardProps {
   match: any;
   isResultsPage: boolean;
-  isLive?: boolean; // ✅ เพิ่มเพื่อเช็คว่าเป็นบอลสดหรือไม่
+  isLive?: boolean;
+  isMaintenance?: boolean; // ✅ รับค่าจาก System Setting
   onBetClick: (match: any, side: string, type: string, oddsValue: string | number) => void;
 }
 
-export default function MatchCard({ match, isResultsPage, isLive, onBetClick }: MatchCardProps) {
+export default function MatchCard({ 
+  match, 
+  isResultsPage, 
+  isLive, 
+  isMaintenance, // ✅ รับสถานะปิดปรับปรุง
+  onBetClick 
+}: MatchCardProps) {
+  
   // --- กำหนดสถานะการล็อคปุ่ม ---
-  // ถ้าเป็นหน้า "ผลบอล" หรือ "บอลสด" ให้ล็อคปุ่มเดิมพันทั้งหมด
-  const isLocked = isResultsPage || isLive;
+  // เพิ่มเงื่อนไข: ถ้าเป็นโหมดปิดปรับปรุง (isMaintenance) ให้ล็อคปุ่มทันที
+  const isLocked = isResultsPage || isLive || isMaintenance;
 
   const homeName = match.home_team || match.home_name || "Home Team";
   const awayName = match.away_team || match.away_name || "Away Team";
@@ -18,13 +27,11 @@ export default function MatchCard({ match, isResultsPage, isLive, onBetClick }: 
   const homeLogo = match.home_team_image_url || match.home_logo || "https://placehold.co/40x40?text=H";
   const awayLogo = match.away_team_image_url || match.away_logo || "https://placehold.co/40x40?text=A";
   
-  // Handicap
+  // Odds Data... (เหมือนเดิม)
   const hdpHomeLine = match.hdp || match.odds?.handicap?.home_line || "0";
-  const hdpAwayLine = match.hdp || match.odds?.handicap?.away_line || "0";
   const hdpHomePrice = match.hdp_home_odds || match.odds?.handicap?.home_price || "";
+  const hdpAwayLine = match.hdp || match.odds?.handicap?.away_line || "0";
   const hdpAwayPrice = match.hdp_away_odds || match.odds?.handicap?.away_price || "";
-
-  // Over/Under
   const ouLine = match.ou_total || match.odds?.over_under?.line || "0";
   const ouOverPrice = match.ou_over_odds || match.odds?.over_under?.over_price || "";
   const ouUnderPrice = match.ou_under_odds || match.odds?.over_under?.under_price || "";
@@ -34,18 +41,22 @@ export default function MatchCard({ match, isResultsPage, isLive, onBetClick }: 
   const awayScore = match.away_score ?? match.scores?.full_time?.away ?? '-';
 
   return (
-    <div className={`bg-[#2D3748] rounded-lg shadow-xl overflow-hidden border border-gray-700 transition-opacity ${isLocked ? 'opacity-90' : 'opacity-100'}`}>
+    <div className={`bg-[#2D3748] rounded-lg shadow-xl overflow-hidden border transition-all ${
+      isMaintenance ? 'border-amber-500/50 grayscale-[0.5]' : 'border-gray-700'
+    } ${isLocked ? 'opacity-90' : 'opacity-100'}`}>
+      
       {/* League Name & Match Time */}
-      <div className="bg-[#3A4354] px-4 py-2 flex justify-between items-center text-xs font-semibold text-gray-300">
+      <div className={`${isMaintenance ? 'bg-amber-900/40' : 'bg-[#3A4354]'} px-4 py-2 flex justify-between items-center text-xs font-semibold text-gray-300`}>
         <span className="truncate pr-2">{match.league_name || 'League'}</span>
         <div className="flex items-center gap-2">
-           {isLive && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded animate-pulse">LIVE</span>}
+           {isLive && !isMaintenance && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded animate-pulse">LIVE</span>}
+           {isMaintenance && <span className="text-[10px] bg-amber-500 text-black px-2 py-0.5 rounded font-black">MAINTENANCE</span>}
            <span className="whitespace-nowrap">{matchTime}</span>
         </div>
       </div>
 
       <div className="p-3">
-        {/* --- Team Names & Logos Row --- */}
+        {/* Team Names & Logos */}
         <div className="flex justify-between items-center mb-3 text-white">
             <div className="flex items-center gap-2 w-[45%]">
                  <img src={homeLogo} alt="home" className="w-6 h-6 object-contain" />
@@ -69,11 +80,11 @@ export default function MatchCard({ match, isResultsPage, isLive, onBetClick }: 
             onClick={() => onBetClick(match, 'home', 'HDP', hdpHomePrice)}
             className={`flex justify-between px-3 py-2 rounded-md text-sm font-bold transition duration-200 
               ${isLocked 
-                ? 'bg-gray-700 text-gray-500 cursor-not-allowed opacity-60' 
+                ? 'bg-gray-800 text-gray-600 cursor-not-allowed' 
                 : 'bg-[#4A5568] hover:bg-yellow-600 text-white'}`}
           >
             <span>{hdpHomeLine}</span>
-            <span className={isLocked ? "text-gray-500" : "text-yellow-400"}>{hdpHomePrice}</span>
+            <span className={isLocked ? "text-gray-600" : "text-yellow-400"}>{hdpHomePrice}</span>
           </button>
           
           <button
@@ -81,11 +92,11 @@ export default function MatchCard({ match, isResultsPage, isLive, onBetClick }: 
             onClick={() => onBetClick(match, 'away', 'HDP', hdpAwayPrice)}
             className={`flex justify-between px-3 py-2 rounded-md text-sm font-bold transition duration-200 
               ${isLocked 
-                ? 'bg-gray-700 text-gray-500 cursor-not-allowed opacity-60' 
+                ? 'bg-gray-800 text-gray-600 cursor-not-allowed' 
                 : 'bg-[#4A5568] hover:bg-yellow-600 text-white'}`}
           >
             <span>{hdpAwayLine}</span>
-            <span className={isLocked ? "text-gray-500" : "text-yellow-400"}>{hdpAwayPrice}</span>
+            <span className={isLocked ? "text-gray-600" : "text-yellow-400"}>{hdpAwayPrice}</span>
           </button>
         </div>
 
@@ -96,14 +107,14 @@ export default function MatchCard({ match, isResultsPage, isLive, onBetClick }: 
             onClick={() => onBetClick(match, 'home', 'OU', ouOverPrice)}
             className={`col-span-2 flex justify-between px-2 py-2 rounded-md text-xs font-bold transition duration-200 
               ${isLocked 
-                ? 'bg-gray-700 text-gray-500 cursor-not-allowed opacity-60' 
+                ? 'bg-gray-800 text-gray-600 cursor-not-allowed' 
                 : 'bg-[#4A5568] hover:bg-green-600 text-white'}`}
           >
             <span>Over</span>
-            <span className={isLocked ? "text-gray-500" : "text-yellow-400"}>{ouOverPrice}</span>
+            <span className={isLocked ? "text-gray-600" : "text-yellow-400"}>{ouOverPrice}</span>
           </button>
           
-          <div className="col-span-1 bg-[#1A202C] text-yellow-400 flex items-center justify-center rounded-md text-sm font-bold">
+          <div className={`col-span-1 flex items-center justify-center rounded-md text-sm font-bold ${isLocked ? 'bg-gray-900 text-gray-600' : 'bg-[#1A202C] text-yellow-400'}`}>
             {ouLine}
           </div>
           
@@ -112,11 +123,11 @@ export default function MatchCard({ match, isResultsPage, isLive, onBetClick }: 
             onClick={() => onBetClick(match, 'away', 'OU', ouUnderPrice)}
             className={`col-span-2 flex justify-between px-2 py-2 rounded-md text-xs font-bold transition duration-200 
               ${isLocked 
-                ? 'bg-gray-700 text-gray-500 cursor-not-allowed opacity-60' 
+                ? 'bg-gray-800 text-gray-600 cursor-not-allowed' 
                 : 'bg-[#4A5568] hover:bg-red-600 text-white'}`}
           >
             <span>Under</span>
-            <span className={isLocked ? "text-gray-500" : "text-yellow-400"}>{ouUnderPrice}</span>
+            <span className={isLocked ? "text-gray-600" : "text-yellow-400"}>{ouUnderPrice}</span>
           </button>
         </div>
 
@@ -124,12 +135,16 @@ export default function MatchCard({ match, isResultsPage, isLive, onBetClick }: 
         {isLocked && (
           <div className="mt-2 text-center">
             {isResultsPage ? (
-              <div className="text-xl font-black text-yellow-400 p-1 bg-[#1A202C] rounded">
+              <div className="text-xl font-black text-yellow-400 p-1 bg-[#1A202C] rounded shadow-inner">
                 FINAL: {homeScore} - {awayScore}
+              </div>
+            ) : isMaintenance ? (
+              <div className="text-[10px] font-black text-amber-500 uppercase tracking-tighter border border-amber-500/20 py-1.5 rounded bg-amber-500/5">
+                ⚠️ System Maintenance - Back Soon
               </div>
             ) : (
               <div className="text-[10px] font-bold text-rose-500 uppercase tracking-widest border border-rose-500/30 py-1 rounded">
-                🔴 Betting Closed - Match in Progress
+                🔴 Betting Closed - Live Match
               </div>
             )}
           </div>

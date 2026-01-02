@@ -86,7 +86,7 @@ export default function RegisterPage() {
           confirmButtonColor: "#eab308",
           allowOutsideClick: false,
         }).then(() => {
-          router.push("/auth");
+          router.push("/login");
         });
       } else {
         showToast("error", data.error || "สมัครสมาชิกไม่สำเร็จ");
