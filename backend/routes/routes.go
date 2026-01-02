@@ -8,30 +8,34 @@ import (
 )
 
 func SetupRoutes(app *fiber.App) {
-	// 1. Static Files (ควรอยู่นอกสุดเพื่อให้ดึงรูปภาพได้เสมอ)
+	// 1. Static Files
 	app.Static("/uploads", "./uploads")
 
 	// สร้าง API Group หลัก
 	api := app.Group("/api/v3")
 
 	// --- 🟢 1. Public Routes (ไม่ต้องมี Token) ---
-	// วางไว้บนสุดเพื่อให้ Fiber หาเจอก่อนการเข้าเงื่อนไข Middleware
+	// เส้นทางเหล่านี้ใครก็เข้าถึงได้
 	api.Get("/settings", handlers.GetSettings)
 	api.Get("/config/bank", handlers.GetAdminBank)
 	api.Post("/register", handlers.Register)
 	api.Post("/login", handlers.Login)
 	api.Post("/transaction/withdraw-request", handlers.RequestWithdraw)
-	api.Get("/me", handlers.GetMe)
-	// --- 🔵 2. Member Routes (ต้อง Login เท่านั้น) ---
-	// แนะนำให้ใช้ Prefix "/user" หรือ "/me" แทน "/" เพื่อป้องกัน Route ทับซ้อน
+
+	// --- 🔵 2. Protected Routes (ต้องมี Token - แบบไม่มี Prefix) ---
+	// แก้ไขเพื่อให้เรียก /api/v3/me ได้โดยตรง (ตามที่ Next.js เรียก)
+	// และต้องผ่าน AuthMiddleware เพื่อให้ Handler มีข้อมูล User
+	api.Get("/me", middleware.AuthMiddleware(), handlers.GetMe)
+
+	// --- 🔵 3. Member Routes (ต้อง Login เท่านั้น - /api/v3/user/...) ---
 	member := api.Group("/user", middleware.AuthMiddleware())
 	{
-		// ดึงข้อมูลส่วนตัว
+		// ดึงข้อมูลส่วนตัว (ใส่ไว้เผื่อเรียกผ่าน /user/me ด้วย)
 		member.Get("/me", handlers.GetMe)
 		member.Get("/balance", handlers.GetBalance)
 		member.Get("/profile", handlers.GetProfile)
 
-		// ข้อมูลการแข่งขัน (หากต้องการให้ดูได้เฉพาะตอน Login เท่านั้น)
+		// ข้อมูลการแข่งขัน
 		member.Get("/match/:path", handlers.GetMatches)
 
 		// การเงินและเดิมพัน
@@ -41,7 +45,7 @@ func SetupRoutes(app *fiber.App) {
 		member.Post("/bet", handlers.PlaceBet)
 	}
 
-	// --- 🔴 3. Admin Routes (ต้อง Login + เป็น Admin เท่านั้น) ---
+	// --- 🔴 4. Admin Routes (ต้อง Login + เป็น Admin เท่านั้น - /api/v3/admin/...) ---
 	admin := api.Group("/admin", middleware.AuthMiddleware(), middleware.RequireAdminRole())
 	{
 		// User Management
