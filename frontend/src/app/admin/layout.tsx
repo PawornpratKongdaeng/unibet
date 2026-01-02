@@ -28,7 +28,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     try {
       // 2. ✅ ใช้ apiFetch แทน fetch ปกติ เพื่อให้รองรับ Production URL และ Auto-Header
-      const res = await apiFetch("/user/me");
+      const res = await apiFetch("/me");
 
       if (!res.ok) {
         // ถ้า API ตอบกลับไม่สำเร็จ (401/500) ให้หยุดและเด้งออก
