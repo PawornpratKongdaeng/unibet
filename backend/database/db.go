@@ -25,11 +25,10 @@ func InitDB() {
 	dbName := getEnv("DB_NAME", "soccer_db")
 
 	// ประกอบ DSN จากตัวแปร
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local&tls=true",
 		dbUser, dbPass, dbHost, dbPort, dbName)
 
-	log.Printf("📡 Connecting to DB: %s:%s...", dbHost, dbPort)
-
+	log.Printf("📡 Connecting to DB (Secure): %s:%s...", dbHost, dbPort)
 	// 2. เชื่อมต่อ MySQL
 	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
