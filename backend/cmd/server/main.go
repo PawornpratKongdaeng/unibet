@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"github.com/PawornpratKongdaeng/soccer/database"
 	"github.com/PawornpratKongdaeng/soccer/routes"
@@ -19,23 +20,24 @@ func main() {
 	// 2. Setup Fiber App
 	app := fiber.New()
 
-	// 3. Middleware: CORS
+	// 3. Middleware: CORS (แก้ไขตรงนี้ ✅)
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "http://localhost:3000",
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
-		AllowMethods: "GET, POST, HEAD, PUT, DELETE, PATCH",
+		// ในช่วงพัฒนาแนะนำให้ใช้ "*" เพื่อให้เข้าถึงได้จากทุกที่
+		// แต่ถ้าจะเอาขึ้น Production จริงๆ ควรใส่ URL ของ Vercel เช่น "https://your-app.vercel.app"
+		AllowOrigins:     "*",
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
+		AllowMethods:     "GET, POST, HEAD, PUT, DELETE, PATCH",
+		AllowCredentials: true,
 	}))
 
 	// 4. Setup Routes
 	routes.SetupRoutes(app)
 
-	// 5. Initialize Cron Job (แทนที่การใช้ time.Sleep แบบเดิม)
-	// สร้าง Cron instance ใหม่
+	// 5. Initialize Cron Job
 	c := cron.New(cron.WithChain(
-		cron.Recover(cron.DefaultLogger), // ป้องกัน Cron ตายถ้าข้างในเกิด Panic
+		cron.Recover(cron.DefaultLogger),
 	))
 
-	// ตั้งเวลาให้รัน AutoSettlement ทุกๆ 5 นาที (หรือปรับเป็น "*/10 * * * *" สำหรับ 10 นาที)
 	_, err := c.AddFunc("*/5 * * * *", func() {
 		log.Println("⏰ [Cron] Task Started: Checking match results...")
 		services.AutoSettlement()
@@ -45,13 +47,16 @@ func main() {
 		log.Fatalf("❌ [Cron] Error: %v", err)
 	}
 
-	// เริ่มต้นการทำงานของ Cron แบบ Background
 	c.Start()
 	log.Println("🚀 Cron Job: Running every 5 minutes")
 
-	// (Option) หากคุณมี worker อื่นในแพ็กเกจ workers ก็สามารถรันต่อได้
-	// go workers.RunAutoSettlement()
+	// 6. Start Server (แก้ไขตรงนี้ ✅)
+	// ดึงค่า Port จากระบบ ถ้าไม่มีให้ใช้ 8080 (Koyeb มักจะใช้ค่า PORT เป็นหลัก)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8000" // เปลี่ยนจาก 8000 เป็น 8080 เพื่อความชัวร์
+	}
 
-	// 6. Start Server
-	log.Fatal(app.Listen(":8000"))
+	log.Printf("📡 Server is starting on port %s", port)
+	log.Fatal(app.Listen(":" + port))
 }
