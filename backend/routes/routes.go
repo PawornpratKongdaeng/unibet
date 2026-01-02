@@ -13,7 +13,9 @@ func SetupRoutes(app *fiber.App) {
 
 	// --- 1. 🟢 Public Routes (ไม่ต้องมี Token / ไม่มี Middleware กั้น) ---
 	// ย้าย GetMatches และ GetSettings มาไว้บนสุดเพื่อให้ Fiber หาเจอก่อนเพื่อน
-	api.Get("/match/:path", handlers.GetMatches)
+	// 🔒 ต้องล็อกอินเท่านั้นถึงจะดู match ได้
+	member := api.Group("/", middleware.AuthMiddleware())
+	member.Get("/match/:path", handlers.GetMatches)
 	api.Get("/settings", handlers.GetSettings)
 	api.Get("/config/bank", handlers.GetAdminBank)
 	api.Post("/register", handlers.Register)
@@ -24,7 +26,6 @@ func SetupRoutes(app *fiber.App) {
 	api.Post("/transaction/withdraw-request", handlers.RequestWithdraw) // เปลี่ยนชื่อนิดหน่อยกันงงกับ member
 
 	// --- 2. 🔵 Member Routes (ต้อง Login เท่านั้น) ---
-	member := api.Group("/", middleware.AuthMiddleware())
 	{
 		member.Get("/me", handlers.GetMe)
 		member.Get("/user/balance", handlers.GetBalance)

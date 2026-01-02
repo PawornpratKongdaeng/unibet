@@ -127,19 +127,7 @@ export default function Home() {
     }
   };
 
-  // --- Render Logic ---
 
-  // กรณี Backend กั้นสิทธิ์คู่บอลผิด (ขึ้น 403)
-  if (matchError?.status === 403) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center text-white p-6 text-center">
-        <div>
-          <h1 className="text-2xl font-black text-rose-500 mb-2">ACCESS RESTRICTED</h1>
-          <p className="text-zinc-500">บัญชีของคุณไม่มีสิทธิ์เข้าถึงข้อมูลส่วนนี้ กรุณาติดต่อฝ่ายบริการลูกค้า</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <main className="min-h-screen bg-[#020617] text-white pb-24 sm:pb-12 font-sans overflow-x-hidden">
