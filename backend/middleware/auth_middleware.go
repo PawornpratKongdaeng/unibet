@@ -61,8 +61,12 @@ func AuthMiddleware() fiber.Handler {
 // RequireAdminRole: ตรวจสอบว่าเป็น Admin หรือไม่ (ต้องผ่าน AuthMiddleware มาก่อน)
 func RequireAdminRole() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		role := c.Locals("role")
-		if role != "admin" {
+		// ดึงออกมาแล้วระบุว่าเป็น string ให้ชัดเจน
+		role, ok := c.Locals("role").(string)
+
+		// ตรวจสอบทั้งกรณีที่ไม่มีค่า หรือค่าไม่ใช่ admin
+		// แนะนำใช้ strings.ToLower เพื่อกันเหนียวเรื่องตัวพิมพ์เล็ก-ใหญ่ครับ
+		if !ok || strings.ToLower(role) != "admin" {
 			return c.Status(403).JSON(fiber.Map{"error": "ห้ามเข้า! เฉพาะ Admin เท่านั้น"})
 		}
 		return c.Next()
