@@ -11,11 +11,11 @@ export const apiFetch = async (endpoint: string, options: any = {}) => {
   let cleanPath = endpoint.replace(/^\/+/, "").replace(/^api\/v3\//, "");
   const url = `${baseUrl}/${cleanPath}`;
 
-  // ✅ ตรวจสอบว่าเป็นเส้นทางที่ไม่ต้องใช้ Token หรือไม่
-  const isPublicPath = endpoint.includes("login") || endpoint.includes("register");
+  // ✅ 1. เพิ่มรายการ Public Path ให้ครบตามที่ Go มี (เพื่อไม่ให้มันเด้ง Logout มั่วซั่ว)
+  const publicEndpoints = ["login", "register", "settings", "config/bank", "withdraw-request"];
+  const isPublicPath = publicEndpoints.some(path => cleanPath.includes(path));
 
   const headers: any = {
-    // ✅ ส่ง Token เฉพาะเมื่อมี และ "ไม่ใช่" หน้า Login/Register
     ...(token && !isPublicPath ? { "Authorization": `Bearer ${token}` } : {}),
     ...options.headers,
   };
@@ -33,17 +33,22 @@ export const apiFetch = async (endpoint: string, options: any = {}) => {
     });
 
     if (typeof window !== "undefined") {
-      // 🛑 401: Unauthorized
+      const currentPath = window.location.pathname;
+
+      // 🛑 2. แก้ไข Logic การรีไดเรกต์ (Infinite Loop Fix)
       if (response.status === 401) {
-        if (!isPublicPath) { // ถ้าติด 401 ในหน้าที่ไม่ใช่ Login ให้ Logout
+        // จะรีไดเรกต์เฉพาะเมื่อ:
+        // - ไม่ใช่หน้า Public
+        // - และ ปัจจุบัน "ไม่ได้" อยู่ที่หน้า Login (ป้องกันการรีเฟรชหน้าตัวเองไม่หยุด)
+        if (!isPublicPath && currentPath !== "/login") {
+          console.error("⛔ Session Expired or Unauthorized. Redirecting...");
           localStorage.removeItem("token");
           localStorage.removeItem("user");
           window.location.replace("/login?reason=expired");
         }
       } 
-      // 🛑 403: Forbidden (สิทธิ์ไม่พอ - มักเกิดจากเรียก Path ผิดกลุ่ม)
       else if (response.status === 403) {
-        console.error("⛔ [403] Access Denied: เช็คว่าใส่ Prefix /user หรือ /admin หรือยัง");
+        console.error("⛔ [403] Access Denied: เช็คสิทธิ์ Admin หรือ Prefix /user");
       }
     }
 
