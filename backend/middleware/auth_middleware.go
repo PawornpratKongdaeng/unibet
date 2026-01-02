@@ -70,9 +70,8 @@ func RequireAdminRole() fiber.Handler {
 }
 func RequireAgentRole() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		role := c.Locals("role").(string)
-		// อนุญาตทั้ง Admin และ Agent/Master ให้เข้าถึงได้
-		if role != "agent" && role != "master" && role != "admin" {
+		role, ok := c.Locals("role").(string) // ตรวจสอบก่อนว่าเป็น string ไหม
+		if !ok || (role != "agent" && role != "master" && role != "admin") {
 			return c.Status(403).JSON(fiber.Map{"error": "สิทธิ์ของคุณไม่เพียงพอ"})
 		}
 		return c.Next()
