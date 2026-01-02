@@ -22,12 +22,10 @@ func main() {
 
 	// 3. Middleware: CORS (แก้ไขตรงนี้ ✅)
 	app.Use(cors.New(cors.Config{
-		// ในช่วงพัฒนาแนะนำให้ใช้ "*" เพื่อให้เข้าถึงได้จากทุกที่
-		// แต่ถ้าจะเอาขึ้น Production จริงๆ ควรใส่ URL ของ Vercel เช่น "https://your-app.vercel.app"
-		AllowOrigins:     "*",
+		AllowOrigins:     "*", // อนุญาตทุกที่
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
 		AllowMethods:     "GET, POST, HEAD, PUT, DELETE, PATCH",
-		AllowCredentials: true,
+		AllowCredentials: false, // เปลี่ยนเป็น false ตรงนี้!
 	}))
 
 	// 4. Setup Routes
