@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { showToast } from "@/lib/sweetAlert";
+import { apiFetch } from "@/lib/api";
 
 export default function CreateMemberModal({ isOpen, onClose, upline, onSuccess }: any) {
   const [formData, setFormData] = useState({
@@ -15,17 +16,14 @@ export default function CreateMemberModal({ isOpen, onClose, upline, onSuccess }
 
   const handleSubmit = async (e: any) => {
     e.preventDefault();
-    const token = localStorage.getItem("token");
-
-    // Check share percent rule
-    if (formData.share_percent > upline.share_percent && upline.role !== "admin") {
+      // Check share percent rule
+      if (formData.share_percent > upline.share_percent && upline.role !== "admin") {
       return showToast("error", `คุณถือหุ้นได้สูงสุดแค่ ${upline.share_percent}%`);
     }
 
     try {
-      const res = await fetch("http://localhost:8080/api/v3/agent/create-downline", {
+      const res = await apiFetch("/agent/create-downline", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ ...formData, parent_id: upline.id }),
       });
 

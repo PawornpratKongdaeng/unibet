@@ -2,6 +2,7 @@
 "use client";
 import { useState } from "react";
 import { showToast } from "@/lib/sweetAlert";
+import { apiFetch } from "@/lib/api";
 
 interface Props {
   isOpen: boolean;
@@ -32,13 +33,8 @@ export default function CreditModal({ isOpen, onClose, targetUser, agentInfo, on
 
     setIsSubmitting(true);
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:8080/api/v3/agent/transfer", {
+      const res = await apiFetch("/agent/transfer", {
         method: "POST",
-        headers: { 
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}` // ✅ ส่ง Token ไปด้วยเสมอ
-        },
         body: JSON.stringify({
           from_id: type === "add" ? agentInfo.id : targetUser.id, // ใครเป็นคนจ่าย
           to_id: type === "add" ? targetUser.id : agentInfo.id,   // ใครเป็นคนรับ

@@ -1,12 +1,16 @@
 // src/lib/api.ts
-  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v3";
+const RAW_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 export const apiFetch = async (endpoint: string, options: any = {}) => {
-  // ตรวจสอบ Token (เฉพาะฝั่ง Client เท่านั้น)
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-  // จัดการตัวสะกด Endpoint ให้ถูกต้อง
+  // ตรวจสอบว่า endpoint มี / นำหน้าไหม
   const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+
+  const BASE_URL = RAW_URL.endsWith("/api/v3") 
+  ? RAW_URL 
+  : `${RAW_URL.replace(/\/$/, "")}/api/v3`;
+  // ตรวจสอบ Token (เฉพาะฝั่ง Client เท่านั้น)
   const url = `${BASE_URL}${cleanEndpoint}`;
 
   // 1. รวม Headers
