@@ -8,63 +8,55 @@ import (
 )
 
 func SetupRoutes(app *fiber.App) {
+	// สร้าง API Group หลัก
 	api := app.Group("/api/v3")
 
-	// --- Public ---
+	// --- 1. 🟢 Public Routes (ไม่ต้องมี Token / ไม่มี Middleware กั้น) ---
+	// ย้าย GetMatches และ GetSettings มาไว้บนสุดเพื่อให้ Fiber หาเจอก่อนเพื่อน
+	api.Get("/match/:path", handlers.GetMatches)
+	api.Get("/settings", handlers.GetSettings)
+	api.Get("/config/bank", handlers.GetAdminBank)
 	api.Post("/register", handlers.Register)
 	api.Post("/login", handlers.Login)
-	api.Get("/match/:path", handlers.GetMatches)
-	api.Get("/config/bank", handlers.GetAdminBank) // ดึงบัญชีแอดมินให้ลูกค้าดู
-	app.Static("/uploads", "./uploads")
-	app.Post("/transaction/withdraw", handlers.RequestWithdraw)
 
-	// --- Member ---
+	// Static files และ Withdraw Request (Public ตามโค้ดเดิม)
+	app.Static("/uploads", "./uploads")
+	api.Post("/transaction/withdraw-request", handlers.RequestWithdraw) // เปลี่ยนชื่อนิดหน่อยกันงงกับ member
+
+	// --- 2. 🔵 Member Routes (ต้อง Login เท่านั้น) ---
 	member := api.Group("/", middleware.AuthMiddleware())
 	{
 		member.Get("/me", handlers.GetMe)
-		member.Post("/deposit", handlers.CreateDeposit) // ตรงกับหน้า DepositPage
+		member.Get("/user/balance", handlers.GetBalance)
+		member.Get("/user/profile", handlers.GetProfile)
+		member.Post("/deposit", handlers.CreateDeposit)
 		member.Post("/withdraw", handlers.CreateWithdraw)
 		member.Get("/bet/history", handlers.GetBetHistory)
 		member.Post("/bet", handlers.PlaceBet)
-		member.Get("/user/balance", handlers.GetBalance)
-		member.Get("/user/profile", handlers.GetProfile)
-		member.Post("/transaction/withdraw", handlers.RequestWithdraw)
 	}
 
-	// --- Admin ---
+	// --- 3. 🔴 Admin Routes (ต้อง Login + เป็น Admin เท่านั้น) ---
 	admin := api.Group("/admin", middleware.AuthMiddleware(), middleware.RequireAdminRole())
 	{
 		// User Management
 		admin.Get("/users", handlers.GetUsers)
-		admin.Post("/users/:id/credit", handlers.AdjustUserBalance) // ตัวปรับยอดเงินแอดมิน
 		admin.Patch("/users/:id", handlers.UpdateUser)
+		admin.Post("/users/:id/credit", handlers.AdjustUserBalance)
 
-		// Financial (ตรงกับ UI FinanceStats ที่คุณทำ)
+		// Financial
 		admin.Get("/finance/summary", handlers.GetFinanceSummary)
 		admin.Get("/transactions/pending", handlers.GetPendingTransactions)
 		admin.Get("/transactions/history", handlers.GetTransactionHistory)
-
-		// ปุ่ม Approve/Reject ในหน้า UI
 		admin.Post("/transactions/approve/:id", handlers.ApproveTransaction)
 		admin.Post("/transactions/reject/:id", handlers.RejectTransaction)
 
-		// System Config
+		// System Config (Admin จัดการได้)
 		admin.Put("/config/bank", handlers.UpdateAdminBank)
+		admin.Get("/settings", handlers.GetSettings)    // Admin ดูในหน้าหลังบ้านได้
+		admin.Put("/settings", handlers.UpdateSettings) // Admin แก้ไขได้
 
 		// Game Control
 		admin.Get("/bets", handlers.GetAllBets)
 		admin.Post("/settle", services.ManualSettlement)
-
-		admin.Post("/transactions/approve/:id", handlers.ApproveTransaction)
-		admin.Post("/transactions/reject/:id", handlers.RejectTransaction)
-
-		// System Config
-		admin.Put("/config/bank", handlers.UpdateAdminBank)
-
-		// Game Control
-		admin.Get("/bets", handlers.GetAllBets)
-		admin.Post("/settle", services.ManualSettlement)
-		admin.Get("/settings", handlers.GetSettings)
-		admin.Put("/settings", handlers.UpdateSettings)
 	}
 }

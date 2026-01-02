@@ -10,37 +10,60 @@ import { showToast } from "@/lib/sweetAlert";
 import { apiFetch } from "@/lib/api"; 
 import { useWallet } from "../context/WalletContext"; 
 
-const fetcher = (url: string) => apiFetch(url).then((res) => res.json());
+// ✅ Fetcher ที่รองรับการเช็ค Status Error
+const fetcher = async (url: string) => {
+  const res = await apiFetch(url);
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const error = new Error(errorData.message || 'An error occurred');
+    (error as any).status = res.status;
+    throw error;
+  }
+  return res.json();
+};
 
 export default function Home() {
   const [selectedBet, setSelectedBet] = useState<any>(null);
   const [endpoint, setEndpoint] = useState<string>("live");
   const router = useRouter();
-  const { balance, refreshBalance } = useWallet() as any;
+  const { refreshBalance } = useWallet() as any;
 
-  // 1. ✅ ดึงข้อมูล System Settings จาก Go Backend
-  // สมมติว่าตั้ง Proxy หรือเรียกตรงไปที่ http://localhost:8080/api/admin/settings
-  const { data: configData } = useSWR("/admin/settings", fetcher, {
-    refreshInterval: 30000 // อัปเดตทุก 30 วินาทีเพื่อเช็คสถานะปิดปรับปรุง
+  // 1. ✅ ดึงข้อมูล System Settings
+  // หาก User ธรรมดาเรียก /admin/settings จะติด 403 ให้ใช้ค่า Fallback ด้านล่าง
+  const { data: configData, error: configError } = useSWR("/settings", fetcher, {
+    refreshInterval: 30000,
+    shouldRetryOnError: false 
   });
-  const settings = configData || {};
 
-  // 2. ดึงข้อมูลคู่บอล
-  const { data, isLoading } = useSWR(
+  // ค่าตั้งต้นในกรณีที่ดึงจาก Backend ไม่ได้ (ป้องกันหน้าเว็บพัง)
+  const settings = configData || {
+    maintenance_mode: false,
+    min_bet: 10,
+    max_bet: 10000,
+    contact_line: "@admin"
+  };
+
+  // 2. ✅ ดึงข้อมูลคู่บอล
+  const { data, isLoading, error: matchError } = useSWR(
     `/match/${endpoint}`, 
     fetcher,
     { refreshInterval: 5000 }
   );
 
+  // 3. ✅ ตรวจสอบการ Login
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
-    if (!token) router.push("/login"); 
-  }, [router]);
+    if (!token) {
+      window.location.replace("/login");
+    }
+  }, []);
 
   const matches = data?.data || [];
 
+  // --- Handlers ---
+
   const handleBetClick = (match: any, side: string, type: string, oddsValue: any) => {
-    // 💡 เช็คก่อนว่าระบบปิดปรับปรุงอยู่หรือไม่ (Security Check ชั้นแรก)
+    // เช็ค Maintenance Mode
     if (settings.maintenance_mode) {
       showToast('error', 'ระบบปิดปรับปรุงชั่วคราว ไม่สามารถวางเดิมพันได้');
       return;
@@ -60,7 +83,7 @@ export default function Home() {
   const handleConfirmBet = async (amount: number) => {
     if (!selectedBet) return;
     
-    // 💡 ตรวจสอบ Min/Max Bet จาก Settings ก่อนส่งไป Backend
+    // ตรวจสอบขั้นต่ำ/สูงสุด
     if (amount < settings.min_bet) {
       showToast('error', `เดิมพันขั้นต่ำคือ ${settings.min_bet} บาท`);
       return;
@@ -73,10 +96,10 @@ export default function Home() {
     const m = selectedBet.match;
     const payload = {
       match_id: String(m.id || m.match_id), 
-      home_team: m.home_name || m.home_team || "Home Team",
-      away_team: m.away_name || m.away_team || "Away Team",
-      home_logo: m.home_logo || m.home_team_image_url || "",
-      away_logo: m.away_logo || m.away_team_image_url || "",
+      home_team: m.home_name || m.home_team,
+      away_team: m.away_name || m.away_team,
+      home_logo: m.home_logo || m.home_team_image_url,
+      away_logo: m.away_logo || m.away_team_image_url,
       pick: selectedBet.side,   
       type: selectedBet.type,   
       odds: parseFloat(String(selectedBet.odds)), 
@@ -89,22 +112,39 @@ export default function Home() {
         method: "POST",
         body: JSON.stringify(payload),
       });
+      
       const result = await res.json();
+      
       if (res.ok) {
         showToast('success', 'วางเดิมพันสำเร็จ!');
         setSelectedBet(null); 
         refreshBalance();
       } else {
-        showToast('error', result.error || 'เกิดข้อผิดพลาด');
+        showToast('error', result.error || 'การวางเดิมพันไม่สำเร็จ');
       }
     } catch (error) {
-      showToast('error', 'การเชื่อมต่อขัดข้อง');
+      showToast('error', 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้');
     }
   };
+
+  // --- Render Logic ---
+
+  // กรณี Backend กั้นสิทธิ์คู่บอลผิด (ขึ้น 403)
+  if (matchError?.status === 403) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center text-white p-6 text-center">
+        <div>
+          <h1 className="text-2xl font-black text-rose-500 mb-2">ACCESS RESTRICTED</h1>
+          <p className="text-zinc-500">บัญชีของคุณไม่มีสิทธิ์เข้าถึงข้อมูลส่วนนี้ กรุณาติดต่อฝ่ายบริการลูกค้า</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[#020617] text-white pb-24 sm:pb-12 font-sans overflow-x-hidden">
       <Header />
+      
       <div className="max-w-4xl mx-auto">
         <div className="sticky top-0 z-40 bg-[#020617]/80 backdrop-blur-md">
           <EndpointSelector 
@@ -113,7 +153,7 @@ export default function Home() {
           />
         </div>
         
-        {/* แสดงแถบแจ้งเตือนเมื่อระบบปิดปรับปรุง */}
+        {/* แถบแจ้งเตือนปิดปรับปรุง */}
         {settings.maintenance_mode && (
           <div className="bg-rose-600 text-white text-[10px] font-black py-2 text-center uppercase tracking-[0.3em] animate-pulse">
             ⚠️ System Maintenance: Betting is currently disabled
@@ -121,33 +161,47 @@ export default function Home() {
         )}
 
         <div className="bg-slate-900/50 text-slate-500 py-3 text-center text-[9px] font-black uppercase tracking-[0.2em] border-y border-slate-800/30">
-          HtayAPI Live <span className="text-yellow-500 ml-2">{endpoint.toUpperCase()}</span>
+          Network Status: <span className="text-emerald-500">Active</span> 
+          <span className="text-zinc-700 mx-2">|</span>
+          Endpoint: <span className="text-yellow-500">{endpoint.toUpperCase()}</span>
         </div>
 
-        {isLoading && <div className="py-20 text-center animate-pulse">Loading Matches...</div>}
+        {/* Loading State */}
+        {isLoading && (
+          <div className="py-20 text-center">
+             <div className="inline-block w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+             <p className="text-zinc-500 text-[10px] font-black tracking-widest uppercase">Loading Matches...</p>
+          </div>
+        )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-4 mt-6">
-          {matches.map((match: any, i: number) => (
-            <div key={match.id || match.ID || i} className="w-full">
-              <MatchCard 
-                match={match}
-                isResultsPage={endpoint === "results"} 
-                isLive={endpoint === "live"}
-                // ✅ ส่งค่า Maintenance ไปให้ MatchCard ล็อคปุ่ม
-                isMaintenance={settings.maintenance_mode} 
-                onBetClick={handleBetClick}
-              />
-            </div>
-          ))}
-        </div>
+        {/* Match List */}
+        {!isLoading && matches.length === 0 ? (
+          <div className="py-20 text-center text-zinc-600 text-xs uppercase tracking-widest italic">
+            No active matches found in {endpoint}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-4 mt-6">
+            {matches.map((match: any, i: number) => (
+              <div key={match.id || i} className="w-full">
+                <MatchCard 
+                  match={match}
+                  isResultsPage={endpoint === "results"} 
+                  isLive={endpoint === "live"}
+                  isMaintenance={settings.maintenance_mode} 
+                  onBetClick={handleBetClick}
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
+      {/* Bet Slip Modal */}
       {selectedBet && (
         <BetSlipModal 
           selectedBet={selectedBet}
-          // ✅ ส่งค่า Min/Max ไปแสดงใน Modal
-          minBet={settings.min_bet}
-          maxBet={settings.max_bet}
+          minBet={Number(settings.min_bet)}
+          maxBet={Number(settings.max_bet)}
           onClose={() => setSelectedBet(null)}
           onConfirm={handleConfirmBet}
         />

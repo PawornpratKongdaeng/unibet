@@ -8,7 +8,7 @@ import {
   FileText, Gavel, Landmark, Settings, 
   LogOut, Menu, X, ShieldCheck, Loader2
 } from "lucide-react";
-import { apiFetch } from "@/lib/api";
+import { apiFetch } from "@/lib/api"; // ✅ ใช้ตัวนี้ตัวเดียวเพื่อจัดการ URL/Token
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -19,18 +19,27 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const checkAuth = useCallback(async () => {
     const token = localStorage.getItem("token");
+    
+    // 1. ถ้าไม่มี Token เลย ให้เตะออกไป Login
     if (!token) {
-      router.push("/login");
+      window.location.href = "/login";
       return;
     }
 
     try {
-      const res = await fetch("http://localhost:8080/api/v3/me", {
-        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
-      });
+      // 2. ✅ ใช้ apiFetch แทน fetch ปกติ เพื่อให้รองรับ Production URL และ Auto-Header
+      const res = await apiFetch("/me"); 
+
+      if (!res.ok) {
+        // ถ้า API ตอบกลับไม่สำเร็จ (401/500) ให้หยุดและเด้งออก
+        throw new Error("Session Invalid");
+      }
+
       const data = await res.json();
 
-      if (data.role !== 'admin') {
+      // 3. ตรวจสอบ Role (เช็คให้ครอบคลุมทั้ง admin และ Admin)
+      const userRole = data.role?.toLowerCase();
+      if (userRole !== 'admin') {
         await Swal.fire({
           icon: 'error',
           title: 'ACCESS DENIED',
@@ -38,17 +47,31 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           background: '#09090b', color: '#fff', confirmButtonColor: '#fbbf24'
         });
         localStorage.removeItem("token");
-        router.push("/login");
-      } else {
-        setAdminInfo(data);
-        setIsLoading(false);
+        localStorage.removeItem("user");
+        window.location.href = "/login";
+        return;
       }
-    } catch (err) {
-      router.push("/login");
-    }
-  }, [router]);
 
-  useEffect(() => { checkAuth(); }, [checkAuth]);
+      // 4. ถ้าทุกอย่างผ่าน
+      setAdminInfo(data);
+      setIsLoading(false);
+    } catch (err) {
+      console.error("Auth check failed:", err);
+      // หากเกิด Error ให้ล้างข้อมูลและกลับหน้า Login
+      localStorage.removeItem("token");
+      window.location.href = "/login";
+    }
+  }, []);
+
+  useEffect(() => { 
+    checkAuth(); 
+  }, [checkAuth]);
+
+  // Logout Function
+  const handleLogout = () => {
+    localStorage.clear();
+    window.location.href = "/login";
+  };
 
   if (isLoading) return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4">
@@ -100,7 +123,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
           {/* Logout Button */}
           <button 
-            onClick={() => { localStorage.removeItem("token"); router.push("/login"); }} 
+            onClick={handleLogout} 
             className="group w-full mt-8 p-5 text-[10px] font-black text-zinc-500 hover:text-rose-500 bg-zinc-900/30 rounded-[2rem] border border-zinc-900 transition-all uppercase tracking-widest hover:border-rose-500/30 flex items-center justify-center gap-3"
           >
             <LogOut size={16} className="group-hover:-translate-x-1 transition-transform" />
@@ -111,8 +134,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 h-screen relative">
-        
-        {/* Header */}
         <header className="h-24 border-b border-zinc-900/50 bg-black/20 backdrop-blur-xl flex items-center justify-between px-8 lg:px-12 shrink-0 z-30">
           <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-3 bg-zinc-900 rounded-xl text-white">
             <Menu size={20} />
@@ -139,20 +160,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </p>
             </div>
             <div className="w-12 h-12 bg-gradient-to-br from-zinc-800 to-black rounded-2xl border border-zinc-800 flex items-center justify-center shadow-2xl relative group cursor-pointer">
-               <span className="font-black text-white italic text-lg group-hover:scale-110 transition-transform">
-                {adminInfo?.username?.charAt(0).toUpperCase()}
-               </span>
-               <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-4 border-black rounded-full"></div>
+                <span className="font-black text-white italic text-lg group-hover:scale-110 transition-transform">
+                 {adminInfo?.username?.charAt(0).toUpperCase() || 'A'}
+                </span>
+                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-4 border-black rounded-full"></div>
             </div>
           </div>
         </header>
 
-        {/* Dynamic Page Content */}
         <main className="flex-1 p-6 lg:p-12 overflow-y-auto scrollbar-hide relative">
-          {/* Subtle Background Glow */}
           <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-amber-500/5 blur-[120px] rounded-full -z-10 pointer-events-none"></div>
-          
-          <div className="max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <div className="max-w-7xl mx-auto">
              {children}
           </div>
         </main>
@@ -161,7 +179,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   );
 }
 
-// NavItem Reusable Component
 function NavItem({ icon, label, sublabel, href, active }: any) {
   return (
     <Link href={href} className="block w-full">
