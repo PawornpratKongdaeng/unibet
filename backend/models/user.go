@@ -7,28 +7,22 @@ import (
 )
 
 type User struct {
-	ID       uint   `gorm:"primaryKey" json:"id"`
-	Username string `gorm:"unique;not null" json:"username"`
-	Password string `gorm:"not null" json:"-"`
-	Role     string `gorm:"default:user" json:"role"` // admin, master, agent, user
-	Phone    string `gorm:"unique;not null" json:"phone"`
-
-	// --- ข้อมูลส่วนตัวและธนาคาร (เพิ่มใหม่) ---
-	FirstName   string `json:"first_name"`
-	LastName    string `json:"last_name"`
-	BankName    string `json:"bank_name"`
-	BankAccount string `gorm:"unique" json:"bank_account"`
-
-	// --- ส่วนของระบบ Agent ---
-	Credit   float64 `json:"credit"`
-	ParentID *uint   `json:"parent_id"`
-	Parent   *User   `gorm:"foreignKey:ParentID" json:"-"`
-
-	Share float64 `gorm:"default:0" json:"share"`
-	Com   float64 `gorm:"default:0" json:"com"`
-
-	Status    string         `gorm:"default:active" json:"status"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	ID          uint           `gorm:"primaryKey" json:"id"`
+	Username    string         `gorm:"unique;not null" json:"username"`
+	Password    string         `gorm:"not null" json:"-"`
+	Role        string         `gorm:"default:user" json:"role"` // admin, user
+	Phone       string         `json:"phone"`                    // เอา unique ออกเพื่อให้ค่าว่างซ้ำกันได้
+	FirstName   string         `json:"first_name"`
+	LastName    string         `json:"last_name"`
+	FullName    string         `json:"fullName"` // สำหรับแสดงผลชื่อเต็ม
+	BankName    string         `json:"bank_name"`
+	BankAccount string         `json:"bank_account"` // เอา unique ออก
+	Credit      float64        `gorm:"default:0" json:"credit"`
+	ParentID    *uint          `json:"parent_id"`
+	Share       float64        `gorm:"default:0" json:"share"`
+	Com         float64        `gorm:"default:0" json:"com"`
+	Status      string         `gorm:"default:active" json:"status"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
 }

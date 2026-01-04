@@ -1,154 +1,145 @@
 "use client";
-import Image from 'next/image';
+import React from 'react';
+import { Clock, Trophy } from "lucide-react";
 
 interface MatchCardProps {
   match: any;
-  isResultsPage: boolean;
-  isLive?: boolean;
-  isMaintenance?: boolean; // ✅ รับค่าจาก System Setting
-  onBetClick: (match: any, side: string, type: string, oddsValue: string | number) => void;
+  onBetClick: (match: any, side: string, type: string, oddsValue: string | number, teamName: string, hdp: string) => void;
+  selectedBets: any[];
 }
 
-export default function MatchCard({ 
-  match, 
-  isResultsPage, 
-  isLive, 
-  isMaintenance, // ✅ รับสถานะปิดปรับปรุง
-  onBetClick 
-}: MatchCardProps) {
+export default function MatchCard({ match, onBetClick, selectedBets = [] }: MatchCardProps) {
+  // --- การดึงข้อมูลจาก API ---
+  const homeName = match.home_team || "Home Team";
+  const awayName = match.away_team || "Away Team";
+  const homeLogo = match.home_team_image_url;
+  const awayLogo = match.away_team_image_url;
   
-  // --- กำหนดสถานะการล็อคปุ่ม ---
-  // เพิ่มเงื่อนไข: ถ้าเป็นโหมดปิดปรับปรุง (isMaintenance) ให้ล็อคปุ่มทันที
-  const isLocked = isResultsPage || isLive || isMaintenance;
+  const hdpLine = match.odds?.handicap?.home_line || "0";
+  const hdpHomePrice = match.odds?.handicap?.home_price || 0;
+  const hdpAwayPrice = match.odds?.handicap?.away_price || 0;
+  
+  const ouLine = match.odds?.over_under?.line || "0";
+  const ouOverPrice = match.odds?.over_under?.over_price || 0;
+  const ouUnderPrice = match.odds?.over_under?.under_price || 0;
 
-  const homeName = match.home_team || match.home_name || "Home Team";
-  const awayName = match.away_team || match.away_name || "Away Team";
-  
-  const homeLogo = match.home_team_image_url || match.home_logo || "https://placehold.co/40x40?text=H";
-  const awayLogo = match.away_team_image_url || match.away_logo || "https://placehold.co/40x40?text=A";
-  
-  // Odds Data... (เหมือนเดิม)
-  const hdpHomeLine = match.hdp || match.odds?.handicap?.home_line || "0";
-  const hdpHomePrice = match.hdp_home_odds || match.odds?.handicap?.home_price || "";
-  const hdpAwayLine = match.hdp || match.odds?.handicap?.away_line || "0";
-  const hdpAwayPrice = match.hdp_away_odds || match.odds?.handicap?.away_price || "";
-  const ouLine = match.ou_total || match.odds?.over_under?.line || "0";
-  const ouOverPrice = match.ou_over_odds || match.odds?.over_under?.over_price || "";
-  const ouUnderPrice = match.ou_under_odds || match.odds?.over_under?.under_price || "";
+  const matchTime = match.match_time?.split(' ')[1]?.substring(0, 5) || '--:--';
 
-  const matchTime = match.match_time?.split(' ')[1]?.substring(0, 5) || 'N/A';
-  const homeScore = match.home_score ?? match.scores?.full_time?.home ?? '-';
-  const awayScore = match.away_score ?? match.scores?.full_time?.away ?? '-';
+  const formatLine = (line: string) => (line === "0" || line === "0.0" ? "Even" : line);
+  
+  const isActive = (type: string, side: string) => {
+    const betId = `${match.id}-${type}`;
+    return selectedBets.some(bet => bet.id === betId && bet.side === side);
+  };
 
   return (
-    <div className={`bg-[#2D3748] rounded-lg shadow-xl overflow-hidden border transition-all ${
-      isMaintenance ? 'border-amber-500/50 grayscale-[0.5]' : 'border-gray-700'
-    } ${isLocked ? 'opacity-90' : 'opacity-100'}`}>
+    <div className="bg-white rounded-[1.5rem] md:rounded-[3rem] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500 overflow-hidden group w-full mb-6">
       
-      {/* League Name & Match Time */}
-      <div className={`${isMaintenance ? 'bg-amber-900/40' : 'bg-[#3A4354]'} px-4 py-2 flex justify-between items-center text-xs font-semibold text-gray-300`}>
-        <span className="truncate pr-2">{match.league_name || 'League'}</span>
-        <div className="flex items-center gap-2">
-           {isLive && !isMaintenance && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded animate-pulse">LIVE</span>}
-           {isMaintenance && <span className="text-[10px] bg-amber-500 text-black px-2 py-0.5 rounded font-black">MAINTENANCE</span>}
-           <span className="whitespace-nowrap">{matchTime}</span>
+      {/* 1. Header: League & Time (ขยาย Padding) */}
+      <div className="px-6 md:px-12 py-4 md:py-6 bg-slate-50/80 border-b border-slate-100 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <Trophy size={18} className="text-emerald-500 shrink-0" />
+          <span className="text-xs md:text-base font-black uppercase tracking-widest text-slate-500 italic truncate">
+            {match.league_name}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-slate-900 font-mono text-xs md:text-lg font-black bg-white px-4 md:px-6 py-2 rounded-full border-2 border-slate-100 shadow-sm">
+          <Clock size={16} className="text-emerald-500" />
+          {matchTime}
         </div>
       </div>
 
-      <div className="p-3">
-        {/* Team Names & Logos */}
-        <div className="flex justify-between items-center mb-3 text-white">
-            <div className="flex items-center gap-2 w-[45%]">
-                 <img src={homeLogo} alt="home" className="w-6 h-6 object-contain" />
-                 <span className={`text-sm font-bold truncate ${match.odds_team === 'home' ? 'text-red-400' : ''}`}>
-                    {homeName}
-                 </span>
+      <div className="p-6 md:p-12">
+        {/* 2. Teams Display (ปรับให้องค์ประกอบใหญ่ขึ้นเพื่อลดที่ว่าง) */}
+        <div className="flex justify-between items-center mb-10 md:mb-16">
+          <div className="flex flex-col items-center gap-4 md:gap-6 w-[40%] text-center">
+            <div className="w-20 h-20 md:w-32 md:h-32 p-4 md:p-6 bg-white rounded-[2rem] md:rounded-[3rem] border border-slate-100 shadow-md group-hover:scale-110 transition-transform duration-500 flex items-center justify-center">
+              <img src={homeLogo} alt="home" className="w-full h-full object-contain" />
             </div>
-            <div className="text-gray-500 text-xs">VS</div>
-            <div className="flex items-center justify-end gap-2 w-[45%]">
-                 <span className={`text-sm font-bold truncate ${match.odds_team === 'away' ? 'text-red-400' : ''}`}>
-                    {awayName}
-                 </span>
-                 <img src={awayLogo} alt="away" className="w-6 h-6 object-contain" />
-            </div>
-        </div>
-
-        {/* Handicap (HDP) Row */}
-        <div className="grid grid-cols-2 gap-2 mb-2">
-          <button
-            disabled={isLocked}
-            onClick={() => onBetClick(match, 'home', 'HDP', hdpHomePrice)}
-            className={`flex justify-between px-3 py-2 rounded-md text-sm font-bold transition duration-200 
-              ${isLocked 
-                ? 'bg-gray-800 text-gray-600 cursor-not-allowed' 
-                : 'bg-[#4A5568] hover:bg-yellow-600 text-white'}`}
-          >
-            <span>{hdpHomeLine}</span>
-            <span className={isLocked ? "text-gray-600" : "text-yellow-400"}>{hdpHomePrice}</span>
-          </button>
-          
-          <button
-            disabled={isLocked}
-            onClick={() => onBetClick(match, 'away', 'HDP', hdpAwayPrice)}
-            className={`flex justify-between px-3 py-2 rounded-md text-sm font-bold transition duration-200 
-              ${isLocked 
-                ? 'bg-gray-800 text-gray-600 cursor-not-allowed' 
-                : 'bg-[#4A5568] hover:bg-yellow-600 text-white'}`}
-          >
-            <span>{hdpAwayLine}</span>
-            <span className={isLocked ? "text-gray-600" : "text-yellow-400"}>{hdpAwayPrice}</span>
-          </button>
-        </div>
-
-        {/* Over/Under (OU) Row */}
-        <div className="grid grid-cols-5 gap-1 mb-2">
-          <button
-            disabled={isLocked}
-            onClick={() => onBetClick(match, 'home', 'OU', ouOverPrice)}
-            className={`col-span-2 flex justify-between px-2 py-2 rounded-md text-xs font-bold transition duration-200 
-              ${isLocked 
-                ? 'bg-gray-800 text-gray-600 cursor-not-allowed' 
-                : 'bg-[#4A5568] hover:bg-green-600 text-white'}`}
-          >
-            <span>Over</span>
-            <span className={isLocked ? "text-gray-600" : "text-yellow-400"}>{ouOverPrice}</span>
-          </button>
-          
-          <div className={`col-span-1 flex items-center justify-center rounded-md text-sm font-bold ${isLocked ? 'bg-gray-900 text-gray-600' : 'bg-[#1A202C] text-yellow-400'}`}>
-            {ouLine}
+            <span className={`text-xs md:text-xl font-black uppercase italic leading-tight tracking-tight ${match.odds_team === 'home' ? 'text-emerald-600' : 'text-slate-800'}`}>
+              {homeName}
+            </span>
           </div>
           
-          <button
-            disabled={isLocked}
-            onClick={() => onBetClick(match, 'away', 'OU', ouUnderPrice)}
-            className={`col-span-2 flex justify-between px-2 py-2 rounded-md text-xs font-bold transition duration-200 
-              ${isLocked 
-                ? 'bg-gray-800 text-gray-600 cursor-not-allowed' 
-                : 'bg-[#4A5568] hover:bg-red-600 text-white'}`}
-          >
-            <span>Under</span>
-            <span className={isLocked ? "text-gray-600" : "text-yellow-400"}>{ouUnderPrice}</span>
-          </button>
+          <div className="flex flex-col items-center">
+            <div className="text-slate-500 font-black italic text-sm md:text-3xl tracking-[0.5em]">VS</div>
+          </div>
+          
+          <div className="flex flex-col items-center gap-4 md:gap-6 w-[40%] text-center">
+            <div className="w-20 h-20 md:w-32 md:h-32 p-4 md:p-6 bg-white rounded-[2rem] md:rounded-[3rem] border border-slate-100 shadow-md group-hover:scale-110 transition-transform duration-500 flex items-center justify-center">
+              <img src={awayLogo} alt="away" className="w-full h-full object-contain" />
+            </div>
+            <span className={`text-xs md:text-xl font-black uppercase italic leading-tight tracking-tight ${match.odds_team === 'away' ? 'text-emerald-600' : 'text-slate-800'}`}>
+              {awayName}
+            </span>
+          </div>
         </div>
 
-        {/* ส่วนแสดงคะแนนและสถานะปิดรับแทง */}
-        {isLocked && (
-          <div className="mt-2 text-center">
-            {isResultsPage ? (
-              <div className="text-xl font-black text-yellow-400 p-1 bg-[#1A202C] rounded shadow-inner">
-                FINAL: {homeScore} - {awayScore}
-              </div>
-            ) : isMaintenance ? (
-              <div className="text-[10px] font-black text-amber-500 uppercase tracking-tighter border border-amber-500/20 py-1.5 rounded bg-amber-500/5">
-                ⚠️ System Maintenance - Back Soon
-              </div>
-            ) : (
-              <div className="text-[10px] font-bold text-rose-500 uppercase tracking-widest border border-rose-500/30 py-1 rounded">
-                🔴 Betting Closed - Live Match
-              </div>
-            )}
+        {/* 3. Betting Section (ขยายขนาดปุ่มและจัดวางค่าน้ำตามทีม) */}
+        <div className="space-y-3 md:space-y-5 max-w-[1400px] mx-auto">
+          
+          {/* --- Handicap Row --- */}
+          <div className="grid grid-cols-[1fr_70px_1fr] md:grid-cols-[1fr_120px_1fr] gap-2 md:gap-4 h-14 md:h-24">
+            {/* ฝั่ง Home */}
+            <button 
+              onClick={() => onBetClick(match, 'home', 'HDP', hdpHomePrice, homeName, hdpLine)}
+              className={`px-4 md:px-8 rounded-xl md:rounded-[2rem] text-[10px] md:text-lg font-black transition-all border-2 flex justify-between items-center shadow-sm ${
+                isActive('HDP', 'home') ? 'bg-emerald-500 border-emerald-400 text-white' : 'bg-[#1a5d2c] border-emerald-800/50 text-white hover:brightness-110'
+              }`}
+            >
+              <span className="truncate mr-2">{homeName}</span>
+              <span className="bg-black/30 px-2 md:px-3 py-1 rounded-lg text-[9px] md:text-base text-emerald-300 font-mono">0-{hdpHomePrice}</span>
+            </button>
+
+            {/* ช่องกลาง (Line) */}
+            <div className="flex items-center justify-center bg-[#0d3d1d] text-emerald-300 text-[11px] md:text-2xl font-black rounded-xl md:rounded-[2rem] border-2 border-emerald-900 shadow-inner">
+              {formatLine(hdpLine)}
+            </div>
+
+            {/* ฝั่ง Away */}
+            <button 
+              onClick={() => onBetClick(match, 'away', 'HDP', hdpAwayPrice, awayName, hdpLine)}
+              className={`px-4 md:px-8 rounded-xl md:rounded-[2rem] text-[10px] md:text-lg font-black transition-all border-2 flex justify-between items-center shadow-sm ${
+                isActive('HDP', 'away') ? 'bg-emerald-500 border-emerald-400 text-white' : 'bg-[#1a5d2c] border-emerald-800/50 text-white hover:brightness-110'
+              }`}
+            >
+              <span className="truncate mr-2">{awayName}</span>
+              <span className="bg-black/30 px-2 md:px-3 py-1 rounded-lg text-[9px] md:text-base text-emerald-300 font-mono">0-{hdpAwayPrice}</span>
+            </button>
           </div>
-        )}
+
+          {/* --- Over/Under Row --- */}
+          <div className="grid grid-cols-[1fr_70px_1fr] md:grid-cols-[1fr_120px_1fr] gap-2 md:gap-4 h-14 md:h-24">
+            {/* Over */}
+            <button 
+              onClick={() => onBetClick(match, 'over', 'OU', ouOverPrice, 'Over', ouLine)}
+              className={`px-4 md:px-8 rounded-xl md:rounded-[2rem] text-[10px] md:text-lg font-black transition-all border-2 flex justify-between items-center shadow-sm ${
+                isActive('OU', 'over') ? 'bg-emerald-500 border-emerald-400 text-white' : 'bg-[#1a5d2c] border-emerald-800/50 text-white hover:brightness-110'
+              }`}
+            >
+              <span>OVER</span>
+              <span className="bg-black/30 px-2 md:px-3 py-1 rounded-lg text-[9px] md:text-base text-emerald-300 font-mono">{ouLine}+{ouOverPrice}</span>
+            </button>
+
+            {/* ช่องกลาง (Odd/Even) */}
+            <div className="flex flex-col gap-1.5">
+              <button className="flex-1 bg-[#0d3d1d] hover:bg-emerald-800 text-[8px] md:text-xs text-white font-black rounded-lg md:rounded-xl border border-emerald-900/50 transition-colors uppercase italic shadow-sm">Odd</button>
+              <button className="flex-1 bg-[#0d3d1d] hover:bg-emerald-800 text-[8px] md:text-xs text-white font-black rounded-lg md:rounded-xl border border-emerald-900/50 transition-colors uppercase italic shadow-sm">Even</button>
+            </div>
+
+            {/* Under */}
+            <button 
+              onClick={() => onBetClick(match, 'under', 'OU', ouUnderPrice, 'Under', ouLine)}
+              className={`px-4 md:px-8 rounded-xl md:rounded-[2rem] text-[10px] md:text-lg font-black transition-all border-2 flex justify-between items-center shadow-sm ${
+                isActive('OU', 'under') ? 'bg-emerald-500 border-emerald-400 text-white' : 'bg-[#1a5d2c] border-emerald-800/50 text-white hover:brightness-110'
+              }`}
+            >
+              <span>UNDER</span>
+              <span className="bg-black/30 px-2 md:px-3 py-1 rounded-lg text-[9px] md:text-base text-emerald-300 font-mono">0-{ouUnderPrice}</span>
+            </button>
+          </div>
+
+        </div>
       </div>
     </div>
   );

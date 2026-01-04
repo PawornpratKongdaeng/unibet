@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"math/rand"
 	"strings"
 	"time"
 
@@ -14,12 +13,6 @@ import (
 )
 
 var jwtKey = []byte("SECRET_KEY_NA_KRUB")
-
-func generateUsername() string {
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	randomNum := r.Intn(90000) + 10000
-	return fmt.Sprintf("unibet%d", randomNum)
-}
 
 func IsAuthenticated(c *fiber.Ctx) error {
 	authHeader := c.Get("Authorization")
@@ -46,15 +39,14 @@ func IsAuthenticated(c *fiber.Ctx) error {
 
 	return c.Next()
 }
-
 func Register(c *fiber.Ctx) error {
 	type RegisterRequest struct {
-		Phone       string `json:"phone"`
-		Password    string `json:"password"`
-		FirstName   string `json:"first_name"`
-		LastName    string `json:"last_name"`
-		BankName    string `json:"bank_name"`
-		BankAccount string `json:"bank_account"`
+		Username  string `json:"username"`
+		Phone     string `json:"phone"`
+		Password  string `json:"password"`
+		FullName  string `json:"fullName"`   // จาก Admin
+		FirstName string `json:"first_name"` // จากหน้าเว็บ
+		LastName  string `json:"last_name"`
 	}
 
 	var body RegisterRequest
@@ -62,54 +54,68 @@ func Register(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
 	}
 
-	// ใช้ .Find() แทน .First() เพื่อไม่ให้ GORM พ่น Log "Record Not Found" สีแดงกวนใจ
-	var users []models.User
-
-	// 1. ตรวจสอบเบอร์โทร
-	database.DB.Where("phone = ?", body.Phone).Limit(1).Find(&users)
-	if len(users) > 0 {
-		return c.Status(400).JSON(fiber.Map{"error": "เบอร์โทรศัพท์นี้ถูกใช้งานแล้ว"})
-	}
-
-	// 2. ตรวจสอบเลขบัญชี
-	database.DB.Where("bank_account = ?", body.BankAccount).Limit(1).Find(&users)
-	if len(users) > 0 {
-		return c.Status(400).JSON(fiber.Map{"error": "เลขบัญชีธนาคารนี้มีอยู่ในระบบแล้ว"})
-	}
-
-	// 3. Gen Username
-	var finalUsername string
-	for {
-		tempName := generateUsername()
+	// 1. ตรวจสอบเบอร์โทรซ้ำ (เฉพาะถ้ากรอกมา)
+	if body.Phone != "" {
 		var count int64
-		database.DB.Model(&models.User{}).Where("username = ?", tempName).Count(&count)
-		if count == 0 {
-			finalUsername = tempName
-			break
+		database.DB.Model(&models.User{}).Where("phone = ?", body.Phone).Count(&count)
+		if count > 0 {
+			return c.Status(400).JSON(fiber.Map{"error": "เบอร์โทรศัพท์นี้ถูกใช้งานแล้ว"})
 		}
 	}
 
+	// 2. จัดการเรื่อง Username (ถ้าว่างให้ Auto-gen)
+	finalUsername := body.Username
+	if finalUsername == "" {
+		finalUsername = generateUsername() // เรียกใช้ฟังก์ชันสุ่มชื่อที่คุณมี
+	}
+
+	// 3. จัดการเรื่องชื่อ (Logic การแยก FullName)
+	fname := body.FirstName
+	lname := body.LastName
+	full := body.FullName
+
+	if full != "" && fname == "" {
+		// ถ้าส่ง FullName มา (เช่น "สมชาย ดีใจ") ให้แยกเป็น fname และ lname
+		parts := strings.SplitN(full, " ", 2)
+		fname = parts[0]
+		if len(parts) > 1 {
+			lname = parts[1]
+		}
+	} else if full == "" && fname != "" {
+		// ถ้าส่งแยกมาแต่ไม่มี FullName ให้รวมร่างให้
+		full = fmt.Sprintf("%s %s", fname, lname)
+	}
+
+	// 4. Hash Password
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(body.Password), 14)
 
+	// 5. สร้าง Object User
 	user := models.User{
 		Username:    finalUsername,
 		Password:    string(hashedPassword),
 		Phone:       body.Phone,
-		FirstName:   body.FirstName,
-		LastName:    body.LastName,
-		BankName:    body.BankName,
-		BankAccount: body.BankAccount,
+		FirstName:   fname,
+		LastName:    lname,
+		FullName:    full, // บันทึกลงช่อง FullName ด้วยเพื่อโชว์ในตาราง
 		Role:        "user",
 		Credit:      0,
+		Status:      "active",
+		BankName:    "",
+		BankAccount: "",
 	}
 
+	// 6. บันทึกลงฐานข้อมูล
 	if err := database.DB.Create(&user).Error; err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถสมัครสมาชิกได้"})
+		// ส่ง Error จริงกลับไปเผื่อ Debug
+		return c.Status(500).JSON(fiber.Map{"error": "สมัครไม่สำเร็จ: " + err.Error()})
 	}
 
-	return c.JSON(fiber.Map{"message": "สมัครสำเร็จ", "username": finalUsername})
+	return c.JSON(fiber.Map{
+		"message":  "สมัครสมาชิกสำเร็จ",
+		"username": finalUsername,
+		"fullName": full,
+	})
 }
-
 func Login(c *fiber.Ctx) error {
 	var body struct {
 		Username string `json:"username"`

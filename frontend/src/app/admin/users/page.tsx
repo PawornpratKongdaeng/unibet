@@ -1,136 +1,218 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation"; // นำเข้า useRouter
+import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { apiFetch } from "@/lib/api";
 import Swal from "sweetalert2";
+import { 
+  UserPlus, Search, Ban, Eye, 
+  Wallet, ChevronRight, Loader2, Phone // ✅ เพิ่มไอคอน Phone
+} from "lucide-react";
 
-const fetcher = (url: string) => apiFetch(url).then(res => res.json());
+const fetcher = (url: string) => apiFetch(url).then(res => {
+  if (!res.ok) throw new Error("Failed to fetch users");
+  return res.json();
+});
 
 export default function AdminUsersPage() {
   const router = useRouter();
-  const { data: users, mutate, isLoading } = useSWR("/admin/users", fetcher);
   const [search, setSearch] = useState("");
+  const { data: users, mutate, isLoading } = useSWR("/admin/users", fetcher);
 
-  // ฟังก์ชันปรับปรุงเครดิต
-  const handleCredit = async (user: any) => {
-    if (!user.id || user.id === 0) return; // ดักฝั่งหน้าบ้านด้วย
+  // 2. ✅ ฟังก์ชันสร้างสมาชิกใหม่ (เพิ่มช่องเบอร์โทรศัพท์)
+  const handleCreateUser = async () => {
+  const randomFiveDigits = Math.floor(10000 + Math.random() * 90000);
+  const generatedUsername = `Thunibet${randomFiveDigits}`;
 
-    const { value: amount } = await Swal.fire({
-      title: `จัดการเครดิต: ${user.username}`,
-      input: 'number',
-      inputLabel: 'ระบุจำนวนเงิน (ใส่ค่าลบเพื่อตัดออก)',
-      showCancelButton: true,
-      confirmButtonText: 'บันทึก',
-      background: '#09090b',
-      color: '#fff',
-    });
+  const { value: formValues } = await Swal.fire({
+    title: `<span style="color: #127447; font-weight: 900;">CREATE NEW MEMBER</span>`,
+    background: '#fff',
+    html: `
+      <div style="text-align: left; font-family: sans-serif; padding: 0 10px;">
+        <label style="font-size: 11px; font-weight: 900; color: #666; display: block; margin-bottom: 5px; text-transform: uppercase;">Username (Auto-Gen)</label>
+        <input id="swal-input1" class="swal2-input" value="${generatedUsername}" readonly style="margin: 0 0 15px 0; width: 100%; background: #f0fdf4; color: #127447; font-weight: bold; border: 1px solid #127447; border-radius: 12px; text-align: center;">
+        
+        <label style="font-size: 11px; font-weight: 900; color: #666; display: block; margin-bottom: 5px; text-transform: uppercase;">Full Name (ชื่อ-นามสกุล)</label>
+        <input id="swal-input2" class="swal2-input" placeholder="ระบุชื่อจริง-นามสกุล" style="margin: 0 0 15px 0; width: 100%; border-radius: 12px; font-size: 14px;">
+        
+        <label style="font-size: 11px; font-weight: 900; color: #666; display: block; margin-bottom: 5px; text-transform: uppercase;">Phone Number (เบอร์โทร)</label>
+        <input id="swal-input4" class="swal2-input" placeholder="08XXXXXXXX" style="margin: 0 0 15px 0; width: 100%; border-radius: 12px; font-size: 14px;">
 
-    if (amount) {
-      try {
-        const res = await apiFetch(`/admin/users/${user.id}/credit`, {
-          method: 'POST',
-          body: JSON.stringify({ amount: parseFloat(amount) })
-        });
-        if (res.ok) {
-          Swal.fire({ icon: 'success', title: 'สำเร็จ', timer: 1000, showConfirmButton: false, background: '#09090b', color: '#fff' });
-          mutate(); // อัปเดต UI ทันที
-        }
-      } catch (err) {
-        Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', background: '#09090b', color: '#fff' });
+        <label style="font-size: 11px; font-weight: 900; color: #666; display: block; margin-bottom: 5px; text-transform: uppercase;">Password</label>
+        <input id="swal-input3" class="swal2-input" type="text" placeholder="กำหนดรหัสผ่าน" style="margin: 0; width: 100%; border-radius: 12px; font-size: 14px;">
+      </div>
+    `,
+    showCancelButton: true,
+    confirmButtonText: 'CREATE USER',
+    confirmButtonColor: '#127447',
+    preConfirm: () => {
+      const fullName = (document.getElementById('swal-input2') as HTMLInputElement).value;
+      const phone = (document.getElementById('swal-input4') as HTMLInputElement).value;
+      const password = (document.getElementById('swal-input3') as HTMLInputElement).value;
+
+      if (!fullName || !phone || !password) {
+        Swal.showValidationMessage('กรุณากรอกข้อมูลให้ครบทุกช่อง');
+        return false;
       }
+
+      return {
+        username: (document.getElementById('swal-input1') as HTMLInputElement).value,
+        fullName,
+        phone,
+        password
+      };
     }
-  };
+  });
 
-  // ฟังก์ชันแบน/ปลดแบน
-  const toggleBan = async (user: any) => {
-    if (!user.id || user.id === 0) return;
-
-    const isBanned = user.status === 'banned';
-    const result = await Swal.fire({
-      title: isBanned ? 'ปลดระงับ?' : 'ระงับการใช้งาน?',
-      text: `User: ${user.username}`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonText: isBanned ? 'UNBAN' : 'BAN',
-      confirmButtonColor: isBanned ? '#10b981' : '#ef4444',
-      background: '#09090b',
-      color: '#fff',
-    });
-
-    if (result.isConfirmed) {
-      const res = await apiFetch(`/admin/users/${user.id}/status`, {
-        method: 'PUT',
-        body: JSON.stringify({ status: isBanned ? 'active' : 'banned' })
+  if (formValues) {
+    try {
+      const res = await apiFetch("/api/v3/register", { 
+        method: "POST", 
+        body: JSON.stringify(formValues) 
       });
+
+      const result = await res.json();
+
       if (res.ok) {
-        mutate();
+        Swal.fire({
+          icon: 'success',
+          title: 'สำเร็จ!',
+          text: `สร้างสมาชิก ${result.username} เรียบร้อย`,
+          confirmButtonColor: '#127447'
+        });
+        mutate(); // โหลดข้อมูลในตารางใหม่
+      } else {
+        Swal.fire('ผิดพลาด', result.error || 'สมัครไม่สำเร็จ', 'error');
       }
+    } catch (err) {
+      Swal.fire('Error', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้', 'error');
+    }
+  }
+};
+
+  const handleCredit = async (user: any) => {
+    const { value: amount } = await Swal.fire({
+      title: `ADJUST CREDIT`,
+      input: 'number',
+      confirmButtonColor: '#127447',
+      showCancelButton: true,
+    });
+    if (amount) {
+      const res = await apiFetch(`/admin/users/${user.id}/credit`, { 
+        method: 'POST', 
+        body: JSON.stringify({ amount: parseFloat(amount) }) 
+      });
+      if (res.ok) mutate();
     }
   };
 
   const filteredUsers = users?.filter((u: any) => 
-    u.username.toLowerCase().includes(search.toLowerCase())
+    u.username.toLowerCase().includes(search.toLowerCase()) || 
+    u.phone?.includes(search)
   ) || [];
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      {/* ... ส่วน Header และ Search (คงเดิม) ... */}
+    <div className="min-h-screen bg-[#f8f9fa] p-4 lg:p-8 animate-in fade-in duration-500">
       
-      <div className="bg-zinc-950/50 border border-zinc-900 rounded-[2.5rem] overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            {/* ... ส่วน thead (คงเดิม) ... */}
-            <tbody className="divide-y divide-zinc-900">
-              {isLoading ? (
-                <tr><td colSpan={5} className="py-20 text-center text-zinc-600 animate-pulse font-black">LOADING...</td></tr>
-              ) : filteredUsers.length > 0 ? (
-                filteredUsers.map((user: any) => (
-                  <tr key={user.id} className="hover:bg-zinc-900/30 transition-colors group">
-                    {/* ... ส่วนแสดง User Profile และ Status (คงเดิม) ... */}
-                    
-                    <td className="px-8 py-6">
-                      <p className="text-xl font-black tracking-tighter text-white">฿{user.credit?.toLocaleString()}</p>
-                      <button 
-                        onClick={() => handleCredit(user)}
-                        className="text-[10px] text-zinc-500 hover:text-amber-400 font-black uppercase transition-colors"
-                      >
-                        [ Adjust Credit ]
-                      </button>
-                    </td>
-
-                    <td className="px-8 py-6">
-                       <p className="text-[10px] text-zinc-500 font-bold uppercase">
-                         {user.last_login ? new Date(user.last_login).toLocaleString('th-TH') : 'Never'}
-                       </p>
-                    </td>
-
-                    <td className="px-8 py-6 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button 
-                          onClick={() => toggleBan(user)}
-                          className={`p-3 rounded-xl border transition-all ${user.status === 'banned' ? 'border-emerald-500/50 text-emerald-500 hover:bg-emerald-500 hover:text-black' : 'border-rose-500/50 text-rose-500 hover:bg-rose-500 hover:text-white'}`}
-                        >
-                          {user.status === 'banned' ? '🔓' : '🚫'}
-                        </button>
-                        
-                        {/* ปุ่ม View Info ใช้งานได้จริงแล้ว */}
-                        <button 
-                          onClick={() => router.push(`/admin/users/${user.id}`)}
-                          className="px-6 py-3 bg-white text-black hover:bg-amber-400 rounded-xl font-black transition-all text-[10px] uppercase tracking-widest"
-                        >
-                          View Info
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr><td colSpan={5} className="py-20 text-center text-zinc-800 font-black italic">NO USERS FOUND</td></tr>
-              )}
-            </tbody>
-          </table>
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+        <div>
+          <h1 className="text-4xl font-black italic tracking-tighter text-[#127447] uppercase">
+            User Management
+          </h1>
+          <p className="text-zinc-400 text-[10px] font-bold uppercase tracking-[0.3em] mt-1">
+            Control member privileges & accounts
+          </p>
         </div>
+
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-300" size={16} />
+            <input 
+              type="text" 
+              placeholder="Search by username or phone..."
+              className="bg-white border border-zinc-100 shadow-sm rounded-2xl pl-12 pr-6 py-4 text-sm font-medium w-full md:w-80 focus:ring-2 focus:ring-[#127447]/10 outline-none transition-all"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <button 
+            onClick={handleCreateUser}
+            className="bg-[#127447] hover:bg-[#0e5a36] text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 shadow-xl shadow-[#127447]/20 transition-all active:scale-95"
+          >
+            <UserPlus size={18} />
+            Create User
+          </button>
+        </div>
+      </div>
+
+      {/* User Cards Area */}
+      <div className="space-y-4">
+        {isLoading ? (
+          <div className="flex flex-col items-center py-32 gap-4">
+            <Loader2 className="animate-spin text-[#127447]" size={48} />
+          </div>
+        ) : filteredUsers.length > 0 ? (
+          filteredUsers.map((user: any) => (
+            <div key={user.id} className="bg-white rounded-[2.5rem] p-6 lg:p-8 shadow-sm border border-zinc-100 flex flex-col lg:flex-row lg:items-center hover:shadow-md transition-all group">
+              
+              {/* Profile & Phone Section */}
+              <div className="flex-1 flex items-center gap-6 mb-4 lg:mb-0">
+                <div className="w-16 h-16 rounded-[1.5rem] bg-[#f0fdf4] flex items-center justify-center text-[#127447] font-black text-2xl group-hover:bg-[#127447] group-hover:text-white transition-colors">
+                  {user.username[0].toUpperCase()}
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 leading-tight">{user.username}</h3>
+                  <div className="flex flex-col gap-1 mt-1">
+                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{user.fullName || 'No Name'}</p>
+                    <div className="flex items-center gap-1.5 text-[#127447]">
+                      <Phone size={10} strokeWidth={3} />
+                      <span className="text-[11px] font-black tracking-tighter">{user.phone || 'N/A'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Credit Section */}
+              <div className="w-full lg:w-48 mb-4 lg:mb-0">
+                <p className="text-[10px] font-black text-zinc-400 uppercase mb-1">Available Credit</p>
+                <div className="flex items-center gap-2">
+                   <p className="text-xl font-black text-[#127447]">฿{Number(user.credit || 0).toLocaleString()}</p>
+                   <button onClick={() => handleCredit(user)} className="p-1.5 bg-zinc-50 text-zinc-400 hover:text-[#127447] rounded-lg">
+                    <Wallet size={14} />
+                   </button>
+                </div>
+              </div>
+
+              {/* Activity Section */}
+              <div className="w-full lg:w-48 mb-6 lg:mb-0">
+                <div className="flex items-center gap-2 mb-1">
+                    <div className={`w-2 h-2 rounded-full ${user.status === 'active' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`}></div>
+                    <span className="text-[10px] font-black text-slate-700 uppercase">{user.status || 'active'}</span>
+                </div>
+                <p className="text-[9px] font-medium text-zinc-400 uppercase">Last: {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'New Account'}</p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-3">
+                <button className="p-4 rounded-2xl bg-zinc-50 text-zinc-400 hover:bg-rose-50 hover:text-rose-500 transition-all">
+                  <Ban size={20} />
+                </button>
+                <button 
+                  onClick={() => router.push(`/admin/users/${user.id}`)}
+                  className="bg-[#18181b] hover:bg-[#127447] text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2"
+                >
+                  Details <ChevronRight size={14} />
+                </button>
+              </div>
+
+            </div>
+          ))
+        ) : (
+          <div className="bg-white rounded-[3rem] py-32 text-center border border-dashed border-zinc-200">
+            <p className="text-zinc-300 font-black italic text-xl uppercase">No matching users found</p>
+          </div>
+        )}
       </div>
     </div>
   );

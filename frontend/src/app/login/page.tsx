@@ -2,10 +2,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { showToast } from "@/lib/sweetAlert";
-import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import { User, Lock, ChevronRight, Info } from "lucide-react";
 
-export default function LoginPage() {
+export default function UnibetLoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -15,8 +15,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
 
-   try {
-      // ✅ แก้ไขบรรทัดนี้: ใช้ Environment Variable แทน URL ตรงๆ
+    try {
       const res = await apiFetch("/api/v3/login", {
         method: "POST",
         body: JSON.stringify({ username, password }),
@@ -27,95 +26,136 @@ export default function LoginPage() {
       if (res.ok) {
         localStorage.setItem("token", data.token);
         localStorage.setItem("user", JSON.stringify(data.user));
-        showToast("success", `ยินดีต้อนรับคุณ ${data.user.username}`);
+        showToast("success", `Welcome back, ${data.user.username}`);
 
-        if (data.user.role === "admin") {
+        const userRole = data.user.role.toLowerCase();
+        if (userRole === "admin") {
           router.push("/admin");
-        } else if (data.user.role === "agent" || data.user.role === "master") {
+        } else if (userRole === "agent" || userRole === "master") {
           router.push("/agent");
         } else {
           router.push("/");
         }
       } else {
-        showToast("error", data.error || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
+        showToast("error", data.error || "Invalid username or password");
       }
     } catch (err) {
-      showToast("error", "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้");
+      showToast("error", "Server connection failed");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#020617] flex items-center justify-center p-6 relative overflow-hidden">
-      {/* Background Decor */}
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/20 blur-[120px] rounded-full"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-yellow-500/10 blur-[120px] rounded-full"></div>
+    // พื้นหลังสีเขียว Unibet
+    <div className="min-h-screen bg-[#127447] flex flex-col items-center justify-center p-4 font-sans">
+      
+      {/* ส่วนบน: Logo (ถ้ามีไฟล์ภาพให้ใช้ <img />) */}
+      <div className="mb-8 flex flex-col items-center">
+        <div className="flex items-center gap-1 mb-2">
+            {/* จำลองโลโก้ Unibet */}
+            <h1 className="text-white text-5xl font-black italic tracking-tighter">UNIBET</h1>
+        </div>
+        {/* จุดสีเขียว 6 จุดตามโลโก้ */}
+        <div className="flex gap-1.5">
+            {[...Array(6)].map((_, i) => (
+                <div key={i} className="w-4 h-4 rounded-full bg-[#33ff66] shadow-sm"></div>
+            ))}
+        </div>
+      </div>
 
-      <div className="w-full max-w-md z-10">
-        <div className="bg-[#0f172a]/80 backdrop-blur-xl border border-slate-800 p-10 rounded-[2.5rem] shadow-2xl">
-          <div className="flex flex-col items-center mb-10">
-            <div className="w-16 h-16 bg-yellow-500 rounded-2xl flex items-center justify-center shadow-xl shadow-yellow-500/20 mb-4 rotate-3">
-              <span className="text-black text-3xl font-black">-T-</span>
-            </div>
-            <h1 className="text-3xl font-black text-white tracking-tighter italic uppercase">
-              Member Login
-            </h1>
-            <p className="text-slate-500 text-sm mt-1">
-              เข้าสู่ระบบเพื่อจัดการสายงานของคุณ
-            </p>
-          </div>
+      <div className="w-full max-w-[400px]">
+        {/* การ์ด Login สีขาวตามแบบ FINAL 688 */}
+        <div className="bg-white rounded-xl shadow-2xl overflow-hidden">
+          
+          <div className="p-8">
+            <h2 className="text-[#127447] text-xl font-bold text-center mb-6 uppercase tracking-tight">
+                Secure Login
+            </h2>
 
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                Username
-              </label>
-              <input
-                type="text"
-                required
-                className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl p-4 mt-1 text-white outline-none focus:border-yellow-500 transition-all"
-                placeholder="unibetXXXXX" // ✅ ปรับ Placeholder ให้รู้ว่าต้องกรอก Username ที่ระบบ Gen ให้
-                onChange={(e) => setUsername(e.target.value)}
-              />
-            </div>
+            <form onSubmit={handleLogin} className="space-y-4">
+              {/* Username */}
+              <div className="space-y-1">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                    <User size={18} />
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3.5 pl-10 text-gray-900 outline-none focus:border-[#127447] focus:ring-1 focus:ring-[#127447] transition-all"
+                    placeholder="Username / Email"
+                    onChange={(e) => setUsername(e.target.value)}
+                  />
+                </div>
+              </div>
 
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                Password
-              </label>
-              <input
-                type="password"
-                required
-                className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl p-4 mt-1 text-white outline-none focus:border-yellow-500 transition-all focus:ring-4 focus:ring-yellow-500/5"
-                placeholder="รหัสผ่าน"
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
+              {/* Password */}
+              <div className="space-y-1">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                    <Lock size={18} />
+                  </div>
+                  <input
+                    type="password"
+                    required
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3.5 pl-10 text-gray-900 outline-none focus:border-[#127447] focus:ring-1 focus:ring-[#127447] transition-all"
+                    placeholder="Password"
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+              </div>
 
-            <button
-              disabled={loading}
-              className="w-full bg-yellow-500 hover:bg-yellow-400 disabled:bg-slate-700 text-black font-black py-4 rounded-2xl mt-4 shadow-lg shadow-yellow-500/10 transition-all active:scale-95 flex items-center justify-center"
-            >
-              {loading ? "กำลังตรวจสอบข้อมูล..." : "LOGIN NOW"}
-            </button>
-          </form>
+              {/* Remember Me (Optional) */}
+              <div className="flex items-center gap-2 px-1">
+                <input type="checkbox" id="remember" className="accent-[#127447] w-4 h-4" />
+                <label htmlFor="remember" className="text-xs text-gray-500 font-medium cursor-pointer">
+                    Remember my account
+                </label>
+              </div>
 
-          {/* 🚀 ปุ่มสำหรับไปหน้า Register */}
-          <div className="mt-8 pt-6 border-t border-slate-800/50 text-center">
-            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">
-              Don't have an account?
-            </p>
-            <Link href="/register">
-              <button className="w-full bg-slate-800 hover:bg-slate-700 text-yellow-500 font-black py-4 rounded-2xl transition-all active:scale-95 border border-slate-700">
-                CREATE NEW ACCOUNT
+              {/* Login Button */}
+              <button
+                disabled={loading}
+                className="w-full bg-[#127447] hover:bg-[#0e5a36] disabled:bg-gray-400 text-white font-bold py-4 rounded-lg mt-2 transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-black/10"
+              >
+                {loading ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                ) : (
+                  <>
+                    <span className="uppercase tracking-wider">Log In</span>
+                  </>
+                )}
               </button>
-            </Link>
+            </form>
+
+            <div className="mt-6 text-center">
+              <button className="text-[#127447] text-xs font-semibold hover:underline">
+                Forgot your password?
+              </button>
+            </div>
           </div>
 
-          <p className="text-center text-slate-600 text-[10px] mt-8 font-bold uppercase tracking-[0.2em]">
-            Security Protected System v3.0
-          </p>
+          {/* Footer Card */}
+          <div className="bg-gray-50 border-t border-gray-100 p-4 text-center">
+             <p className="text-[10px] text-gray-400 font-medium uppercase tracking-widest">
+                System Version 4.0.2
+             </p>
+          </div>
+        </div>
+
+        {/* Support Info */}
+        <div className="mt-8 flex flex-col items-center gap-4">
+            <div className="flex items-center gap-2 text-white/70 bg-white/10 px-4 py-2 rounded-full border border-white/10">
+                <Info size={14} />
+                <span className="text-[11px] font-medium tracking-wide">
+                    Need help? Contact your account manager
+                </span>
+            </div>
+            <p className="text-[10px] text-white/40 text-center leading-relaxed">
+                © 2026 UNIBET GROUP. ALL RIGHTS RESERVED.<br/>
+                BY PLAYERS, FOR PLAYERS.
+            </p>
         </div>
       </div>
     </div>

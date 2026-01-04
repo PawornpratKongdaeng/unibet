@@ -4,15 +4,16 @@ import { apiFetch } from "@/lib/api";
 import Swal from "sweetalert2";
 import { 
   TrendingUp, Wallet, ArrowDownCircle, ArrowUpCircle, 
-  History, Eye, Check, X, ShieldAlert 
+  History, Eye, RefreshCcw, Landmark, FileCheck
 } from "lucide-react";
+import { cloneElement } from "react";
 
 const IMAGE_BASE_URL = "http://localhost:8080";
 const fetcher = (url: string) => apiFetch(url).then(res => res.json());
 
 export default function FinanceStats() {
   const { data: financeData } = useSWR("/admin/finance/summary", fetcher);
-  const { data: pending, mutate: mutatePending } = useSWR("/admin/transactions/pending", fetcher);
+  const { data: pending, mutate: mutatePending } = useSWR("/admin/transactions/pending", fetcher, { refreshInterval: 5000 });
   const { data: history, mutate: mutateHistory } = useSWR("/admin/transactions/history", fetcher);
 
   const pendingDeposits = pending?.filter((tx: any) => tx.type === "deposit") || [];
@@ -27,68 +28,85 @@ export default function FinanceStats() {
       showCancelButton: true,
       confirmButtonText: isApprove ? 'APPROVE' : 'REJECT',
       confirmButtonColor: isApprove ? '#10b981' : '#f43f5e',
-      background: '#09090b', color: '#fff'
+      background: '#fff', 
+      color: '#0f172a'
     });
 
     if (result.isConfirmed) {
       try {
         const res = await apiFetch(`/admin/transactions/${action}/${id}`, { method: 'POST' });
         if (res.ok) {
-          Swal.fire({ icon: 'success', title: 'COMMAND EXECUTED', timer: 1000, showConfirmButton: false, background: '#09090b', color: '#fff' });
+          Swal.fire({ icon: 'success', title: 'COMPLETED', timer: 1000, showConfirmButton: false });
           mutatePending();
           mutateHistory();
         }
       } catch (err) {
-        Swal.fire({ icon: 'error', title: 'SYSTEM ERROR', background: '#09090b', color: '#fff' });
+        Swal.fire({ icon: 'error', title: 'SYSTEM ERROR' });
       }
     }
   };
 
   const viewSlip = (path: string) => {
-    if (!path) return Swal.fire({ icon: 'error', title: 'SLIP NOT FOUND', background: '#09090b', color: '#fff' });
+    if (!path) return Swal.fire({ icon: 'error', title: 'SLIP NOT FOUND' });
     Swal.fire({
       imageUrl: `${IMAGE_BASE_URL}${path}`,
       imageAlt: 'Transfer Slip',
-      background: '#09090b',
-      confirmButtonColor: '#f43f5e',
-      confirmButtonText: 'CLOSE TERMINAL',
-      customClass: { image: 'rounded-3xl border border-white/5 shadow-2xl' }
+      background: '#fff',
+      confirmButtonColor: '#10b981',
+      confirmButtonText: 'CLOSE',
     });
   };
 
   return (
-    <div className="space-y-12 animate-in fade-in duration-700">
-      {/* 1. Header & Stats */}
+    <div className="space-y-8 animate-in fade-in duration-700 pb-10 bg-slate-50/50 p-4 rounded-3xl">
+      
+      {/* --- Header Section --- */}
+      <div className="flex justify-between items-center px-2">
+        <div>
+            <div className="flex items-center gap-2 mb-1">
+                <Landmark size={14} className="text-emerald-600" />
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Financial Control</p>
+            </div>
+            <h1 className="text-4xl font-black italic text-slate-900 uppercase tracking-tighter">
+                Financial <span className="text-emerald-600">Operations</span>
+            </h1>
+        </div>
+        <button onClick={() => { mutatePending(); mutateHistory(); }} className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-all shadow-sm group">
+            <RefreshCcw size={20} className="group-active:rotate-180 transition-transform duration-500" />
+        </button>
+      </div>
+
+      {/* --- Finance Stats Cards (White & Clean) --- */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <FinanceCard title="Total Deposit" value={financeData?.total_deposit || 0} icon={<ArrowDownCircle size={24}/>} color="text-emerald-400" bg="bg-emerald-500/5" border="border-emerald-500/20" />
-        <FinanceCard title="Total Withdraw" value={financeData?.total_withdraw || 0} icon={<ArrowUpCircle size={24}/>} color="text-rose-500" bg="bg-rose-500/5" border="border-rose-500/20" />
-        <FinanceCard title="Net Profit" value={(financeData?.total_deposit || 0) - (financeData?.total_withdraw || 0)} icon={<TrendingUp size={24}/>} color="text-amber-400" bg="bg-amber-500/10" border="border-amber-400/30" isHighlight />
+        <FinanceCard title="Total Deposit" value={financeData?.total_deposit || 0} icon={<ArrowDownCircle />} variant="emerald" />
+        <FinanceCard title="Total Withdraw" value={financeData?.total_withdraw || 0} icon={<ArrowUpCircle />} variant="rose" />
+        <FinanceCard title="Net Profit" value={(financeData?.total_deposit || 0) - (financeData?.total_withdraw || 0)} icon={<TrendingUp />} variant="highlight" />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-        {/* 2. Pending Deposits */}
-        <div className="space-y-6">
-          <SectionHeader title="Pending Deposits" count={pendingDeposits.length} color="text-emerald-500" />
-          <div className="bg-zinc-950 border border-zinc-900 rounded-[2.5rem] overflow-hidden">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+        {/* --- Pending Deposits (White Card) --- */}
+        <div className="space-y-4">
+          <SectionHeader title="Awaiting Deposit" count={pendingDeposits.length} color="text-emerald-600" />
+          <div className="bg-white border border-slate-100 rounded-[2rem] overflow-hidden shadow-sm">
             <table className="w-full">
-              <thead className="bg-zinc-900/50 text-zinc-500 text-[10px] font-black uppercase tracking-widest">
+              <thead className="bg-slate-50 text-slate-400 text-[10px] font-bold uppercase tracking-widest">
                 <tr>
-                  <th className="px-6 py-5 text-left">User Identity</th>
-                  <th className="px-6 py-5 text-left">Amount</th>
-                  <th className="px-6 py-5 text-right">Verification</th>
+                  <th className="px-6 py-4 text-left">User Identity</th>
+                  <th className="px-6 py-4 text-left">Amount</th>
+                  <th className="px-6 py-4 text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-900">
+              <tbody className="divide-y divide-slate-50">
                 {pendingDeposits.map((tx: any) => (
-                  <tr key={tx.id} className="hover:bg-emerald-500/5 transition-colors group">
+                  <tr key={tx.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-6 py-4">
-                      <p className="text-white font-black italic">@{tx.User?.username}</p>
-                      <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-tighter">ID: {tx.id}</p>
+                      <p className="text-slate-900 font-bold tracking-tight">@{tx.User?.username}</p>
+                      <p className="text-[9px] text-slate-400 font-medium">ID: {tx.id}</p>
                     </td>
-                    <td className="px-6 py-4 text-emerald-400 font-black text-lg italic tracking-tighter">฿{tx.amount.toLocaleString()}</td>
+                    <td className="px-6 py-4 text-emerald-600 font-black text-xl italic tracking-tighter">฿{tx.amount.toLocaleString()}</td>
                     <td className="px-6 py-4 flex justify-end gap-2">
-                      <button onClick={() => viewSlip(tx.slip_url)} className="p-3 bg-zinc-900 text-zinc-400 rounded-xl hover:text-white transition-all"><Eye size={16}/></button>
-                      <button onClick={() => handleAction(tx.id, 'approve', 'deposit', tx.amount)} className="px-5 py-3 bg-white text-black rounded-xl text-[10px] font-black uppercase hover:bg-emerald-500 hover:text-white transition-all">Approve</button>
+                      <button onClick={() => viewSlip(tx.slip_url)} className="p-2.5 bg-slate-100 text-slate-500 rounded-xl hover:bg-emerald-50 hover:text-emerald-600 transition-all"><Eye size={18}/></button>
+                      <button onClick={() => handleAction(tx.id, 'approve', 'deposit', tx.amount)} className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-700 shadow-md shadow-emerald-200 transition-all">Approve</button>
                     </td>
                   </tr>
                 ))}
@@ -97,28 +115,28 @@ export default function FinanceStats() {
           </div>
         </div>
 
-        {/* 3. Pending Withdrawals */}
-        <div className="space-y-6">
-          <SectionHeader title="Pending Withdrawals" count={pendingWithdrawals.length} color="text-rose-500" />
-          <div className="bg-zinc-950 border border-zinc-900 rounded-[2.5rem] overflow-hidden">
+        {/* --- Pending Withdrawals (White Card) --- */}
+        <div className="space-y-4">
+          <SectionHeader title="Awaiting Payout" count={pendingWithdrawals.length} color="text-rose-500" />
+          <div className="bg-white border border-slate-100 rounded-[2rem] overflow-hidden shadow-sm">
              <table className="w-full">
-              <thead className="bg-zinc-900/50 text-zinc-500 text-[10px] font-black uppercase tracking-widest">
+              <thead className="bg-slate-50 text-slate-400 text-[10px] font-bold uppercase tracking-widest">
                 <tr>
-                  <th className="px-6 py-5 text-left">User Identity</th>
-                  <th className="px-6 py-5 text-left">Amount</th>
-                  <th className="px-6 py-5 text-right">Verification</th>
+                  <th className="px-6 py-4 text-left">User Identity</th>
+                  <th className="px-6 py-4 text-left">Amount</th>
+                  <th className="px-6 py-4 text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-900">
+              <tbody className="divide-y divide-slate-50">
                 {pendingWithdrawals.map((tx: any) => (
-                  <tr key={tx.id} className="hover:bg-rose-500/5 transition-colors group">
+                  <tr key={tx.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-6 py-4">
-                      <p className="text-white font-black italic">@{tx.User?.username}</p>
-                      <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-tighter">ID: {tx.id}</p>
+                      <p className="text-slate-900 font-bold tracking-tight">@{tx.User?.username}</p>
+                      <p className="text-[9px] text-slate-400 font-medium">ID: {tx.id}</p>
                     </td>
-                    <td className="px-6 py-4 text-rose-500 font-black text-lg italic tracking-tighter">฿{tx.amount.toLocaleString()}</td>
-                    <td className="px-6 py-4 flex justify-end gap-2">
-                      <button onClick={() => handleAction(tx.id, 'approve', 'withdraw', tx.amount)} className="px-5 py-3 bg-white text-black rounded-xl text-[10px] font-black uppercase hover:bg-rose-500 hover:text-white transition-all">Transfered</button>
+                    <td className="px-6 py-4 text-rose-500 font-black text-xl italic tracking-tighter">฿{tx.amount.toLocaleString()}</td>
+                    <td className="px-6 py-4 flex justify-end">
+                      <button onClick={() => handleAction(tx.id, 'approve', 'withdraw', tx.amount)} className="px-5 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-rose-500 transition-all">Transfered</button>
                     </td>
                   </tr>
                 ))}
@@ -128,43 +146,43 @@ export default function FinanceStats() {
         </div>
       </div>
 
-      {/* 4. Global Financial History */}
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-            <h3 className="text-2xl font-black uppercase italic text-white tracking-tighter">Global <span className="text-zinc-600">History</span></h3>
-            <History className="text-zinc-800" />
+      {/* --- Global History (Full Width White Card) --- */}
+      <div className="space-y-4 pt-4">
+        <div className="flex items-center justify-between px-2">
+            <h3 className="text-xl font-black uppercase italic text-slate-900 tracking-tighter">Transaction <span className="text-emerald-600">History</span></h3>
+            <History className="text-slate-300" size={20} />
         </div>
-        <div className="bg-zinc-950 border border-zinc-900 rounded-[3rem] overflow-hidden shadow-2xl">
+        <div className="bg-white border border-slate-100 rounded-[2.5rem] overflow-hidden shadow-sm">
           <table className="w-full text-left">
-            <thead className="bg-zinc-900 text-zinc-500 text-[9px] font-black uppercase tracking-[0.2em]">
+            <thead className="bg-slate-50 text-slate-400 text-[9px] font-bold uppercase tracking-[0.2em]">
               <tr>
-                <th className="px-8 py-6">Timestamp</th>
-                <th className="px-8 py-6">Identity</th>
-                <th className="px-8 py-6">Operation</th>
-                <th className="px-8 py-6">Amount</th>
-                <th className="px-8 py-6 text-right">Result</th>
+                <th className="px-8 py-5">Timestamp</th>
+                <th className="px-8 py-5">Identity</th>
+                <th className="px-8 py-5">Operation</th>
+                <th className="px-8 py-5">Amount</th>
+                <th className="px-8 py-5 text-right">Result</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-900">
+            <tbody className="divide-y divide-slate-50">
               {history?.map((tx: any) => (
-                <tr key={tx.id} className="hover:bg-zinc-900/30 transition-all group">
-                  <td className="px-8 py-5">
-                    <p className="text-white font-bold">{new Date(tx.created_at).toLocaleTimeString()}</p>
-                    <p className="text-[9px] text-zinc-600 font-black uppercase tracking-tighter">{new Date(tx.created_at).toLocaleDateString()}</p>
+                <tr key={tx.id} className="hover:bg-slate-50 transition-all group text-slate-600">
+                  <td className="px-8 py-4">
+                    <p className="font-bold text-slate-900">{new Date(tx.created_at).toLocaleTimeString()}</p>
+                    <p className="text-[9px] text-slate-400 font-bold uppercase">{new Date(tx.created_at).toLocaleDateString()}</p>
                   </td>
-                  <td className="px-8 py-5 text-zinc-400 font-bold italic">@{tx.User?.username}</td>
-                  <td className="px-8 py-5">
-                      <span className={`text-[9px] font-black px-3 py-1 rounded-lg uppercase tracking-widest ${tx.type === 'deposit' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+                  <td className="px-8 py-4 font-bold text-slate-500 italic">@{tx.User?.username}</td>
+                  <td className="px-8 py-4">
+                      <span className={`text-[9px] font-black px-3 py-1 rounded-lg uppercase tracking-widest ${tx.type === 'deposit' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'}`}>
                         {tx.type}
                       </span>
                   </td>
-                  <td className={`px-8 py-5 text-xl font-black italic tracking-tighter ${tx.type === 'deposit' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                  <td className={`px-8 py-4 text-xl font-black italic tracking-tighter ${tx.type === 'deposit' ? 'text-emerald-600' : 'text-rose-500'}`}>
                     {tx.type === 'deposit' ? '+' : '-'} ฿{tx.amount.toLocaleString()}
                   </td>
-                  <td className="px-8 py-5 text-right">
-                    <span className={`text-[9px] font-black uppercase px-4 py-1.5 rounded-full border ${
-                      tx.status === 'approved' ? 'border-emerald-500/50 text-emerald-500 bg-emerald-500/5' : 
-                      tx.status === 'rejected' ? 'border-rose-500/50 text-rose-500 bg-rose-500/5' : 'border-amber-500/50 text-amber-500 bg-amber-500/5'
+                  <td className="px-8 py-4 text-right">
+                    <span className={`text-[9px] font-bold uppercase px-4 py-1.5 rounded-full border ${
+                      tx.status === 'approved' ? 'border-emerald-200 text-emerald-600 bg-emerald-50' : 
+                      tx.status === 'rejected' ? 'border-rose-200 text-rose-500 bg-rose-50' : 'border-amber-200 text-amber-500 bg-amber-50'
                     }`}>
                       {tx.status}
                     </span>
@@ -182,25 +200,35 @@ export default function FinanceStats() {
 function SectionHeader({ title, count, color }: any) {
     return (
         <div className="flex items-center justify-between px-2">
-            <h3 className={`text-xl font-black uppercase italic ${color} flex items-center gap-3 tracking-tighter`}>
-                <span className={`w-2 h-2 rounded-full bg-current animate-pulse`} />
+            <h3 className={`text-sm font-black uppercase ${color} flex items-center gap-2 tracking-wider`}>
+                <span className="w-1.5 h-1.5 rounded-full bg-current" />
                 {title}
             </h3>
-            <span className="bg-zinc-900 text-zinc-500 px-3 py-1 rounded-lg text-[10px] font-black">{count} ACTIONS</span>
+            <span className="bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-[9px] font-black uppercase">{count} Actions</span>
         </div>
     )
 }
 
-function FinanceCard({ title, value, icon, color, bg, border, isHighlight = false }: any) {
+function FinanceCard({ title, value, icon, variant }: any) {
+  const styles: any = {
+    emerald: { bg: "bg-white", border: "border-slate-100", iconBg: "bg-emerald-50", iconCol: "text-emerald-600", textCol: "text-emerald-600" },
+    rose: { bg: "bg-white", border: "border-slate-100", iconBg: "bg-rose-50", iconCol: "text-rose-500", textCol: "text-rose-500" },
+    highlight: { bg: "bg-emerald-600", border: "border-emerald-500", iconBg: "bg-white/20", iconCol: "text-white", textCol: "text-white" }
+  };
+
+  const s = styles[variant];
+
   return (
-    <div className={`p-8 rounded-[3rem] border ${border} ${bg} relative overflow-hidden group hover:scale-[1.02] transition-all duration-500`}>
-      <div className="flex justify-between items-start mb-6">
-        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center bg-black/40 ${color}`}>{icon}</div>
-        {isHighlight && <span className="bg-amber-400 text-black text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-tighter">House Reserve</span>}
+    <div className={`p-7 rounded-[2.5rem] border ${s.border} ${s.bg} shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group`}>
+      <div className="flex justify-between items-start mb-4">
+        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${s.iconBg} ${s.iconCol}`}>
+            {cloneElement(icon as React.ReactElement, { size: 22, strokeWidth: 2.5 })}
+        </div>
+        {variant === 'highlight' && <FileCheck size={18} className="text-white/40" />}
       </div>
-      <p className="text-zinc-500 text-[10px] font-black uppercase tracking-[0.2em] mb-1">{title}</p>
-      <h2 className={`text-4xl font-black italic tracking-tighter ${color}`}>
-        ฿ {value.toLocaleString()}
+      <p className={`${variant === 'highlight' ? 'text-emerald-100' : 'text-slate-400'} text-[10px] font-bold uppercase tracking-widest mb-0.5`}>{title}</p>
+      <h2 className={`text-4xl font-black italic tracking-tighter ${s.textCol}`}>
+        ฿{value.toLocaleString()}
       </h2>
     </div>
   );

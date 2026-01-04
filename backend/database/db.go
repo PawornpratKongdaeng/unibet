@@ -25,7 +25,7 @@ func InitDB() {
 	dbName := getEnv("DB_NAME", "soccer_db")
 
 	// ประกอบ DSN จากตัวแปร
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local&tls=true",
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local&tls=skip-verify",
 		dbUser, dbPass, dbHost, dbPort, dbName)
 
 	log.Printf("📡 Connecting to DB (Secure): %s:%s...", dbHost, dbPort)

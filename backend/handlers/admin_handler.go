@@ -1,189 +1,110 @@
 package handlers
 
 import (
+	"fmt"
+	"math/rand"
+	"time"
+
 	"github.com/PawornpratKongdaeng/soccer/database"
 	"github.com/PawornpratKongdaeng/soccer/models"
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
-// 1. ดูรายชื่อสมาชิกทั้งหมด
-func GetUsers(c *fiber.Ctx) error {
-	var users []models.User
-	// ดึงเฉพาะฟิลด์ที่จำเป็นเพื่อความปลอดภัย
-	database.DB.Select("id", "username", "role", "credit", "created_at").Find(&users)
-	return c.JSON(users)
-}
-
-// 2. ดูบิลการแทงทั้งหมดในระบบ
-func GetAllBets(c *fiber.Ctx) error {
-	var bets []models.BetSlip
-	result := database.DB.Order("id desc").Limit(100).Find(&bets)
-
-	if result.Error != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถดึงข้อมูลบิลได้"})
+// ✅ 1. เพิ่มฟังก์ชัน GetUserID เพื่อดึงข้อมูลจาก Locals (ที่ Middleware เซตไว้)
+func GetUserID(c *fiber.Ctx) uint {
+	id, ok := c.Locals("user_id").(uint)
+	if !ok {
+		return 0
 	}
-	return c.JSON(bets)
+	return id
 }
 
-// 3. โครงสร้างรับข้อมูลสำหรับปรับปรุงยอดเงิน
-type AdjustBalanceRequest struct {
-	UserID uint    `json:"user_id"`
-	Amount float64 `json:"amount"`
-}
-
-// 4. ฟังก์ชันปรับเงิน (ใช้ตัวนี้ตัวเดียวสำหรับปุ่ม ฝาก/ถอน)
 func AdjustUserBalance(c *fiber.Ctx) error {
-	// 1. รับ ID จาก URL (:id)
-	id := c.Params("id")
-	if id == "" || id == "0" || id == "undefined" {
-		return c.Status(400).JSON(fiber.Map{"error": "ID ไม่ถูกต้อง"})
-	}
-
-	// 2. รับ Amount จาก Body
-	type Request struct {
-		Amount float64 `json:"amount" xml:"amount" form:"amount"`
-	}
-	var req Request
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "รูปแบบจำนวนเงินไม่ถูกต้อง"})
-	}
-
-	// 3. อัปเดต DB
-	var user models.User
-	if err := database.DB.First(&user, id).Error; err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "ไม่พบผู้ใช้"})
-	}
-
-	newCredit := user.Credit + req.Amount
-	if newCredit < 0 {
-		return c.Status(400).JSON(fiber.Map{"error": "เครดิตติดลบไม่ได้"})
-	}
-
-	database.DB.Model(&user).Update("credit", newCredit)
-
-	return c.JSON(fiber.Map{"message": "ปรับปรุงสำเร็จ", "new_credit": newCredit})
-}
-
-// 5. ดูสถิติการเงิน (Dashboard)
-func GetFinancialStats(c *fiber.Ctx) error {
-	var stats struct {
-		TotalDeposit  float64 `json:"total_deposit"`
-		TotalWithdraw float64 `json:"total_withdraw"`
-		NetProfit     float64 `json:"net_profit"`
-	}
-
-	// คำนวณยอดฝาก
-	database.DB.Model(&models.Transaction{}).
-		Where("type = ? AND status = ?", "deposit", "approved").
-		Select("COALESCE(SUM(amount), 0)").Scan(&stats.TotalDeposit)
-
-	// คำนวณยอดถอน
-	database.DB.Model(&models.Transaction{}).
-		Where("type = ? AND status = ?", "withdraw", "approved").
-		Select("COALESCE(SUM(amount), 0)").Scan(&stats.TotalWithdraw)
-
-	stats.NetProfit = stats.TotalDeposit - stats.TotalWithdraw
-
-	return c.JSON(stats)
-}
-
-// handlers/admin_handler.go
-
-func UpdateUser(c *fiber.Ctx) error {
-	id := c.Params("id")
-
-	type UpdateInput struct {
-		Credit float64 `json:"credit"`
-		Role   string  `json:"role"`
-	}
-	if id == "" || id == "0" || id == "undefined" {
-		return c.Status(400).JSON(fiber.Map{"message": "ID ผู้ใช้งานไม่ถูกต้อง"})
-	}
-
-	var input UpdateInput
-	if err := c.BodyParser(&input); err != nil {
-		// เปลี่ยนจาก fiber.H เป็น fiber.Map
-		return c.Status(400).JSON(fiber.Map{"message": "รูปแบบข้อมูลไม่ถูกต้อง"})
-	}
-
-	var user models.User
-	if err := database.DB.First(&user, id).Error; err != nil {
-		// เปลี่ยนจาก fiber.H เป็น fiber.Map
-		return c.Status(404).JSON(fiber.Map{"message": "ไม่พบผู้ใช้งานนี้ในระบบ"})
-	}
-
-	updateData := map[string]interface{}{
-		"credit": input.Credit,
-		"role":   input.Role,
-	}
-
-	if err := database.DB.Model(&user).Updates(updateData).Error; err != nil {
-		// เปลี่ยนจาก fiber.H เป็น fiber.Map
-		return c.Status(500).JSON(fiber.Map{"message": "เกิดข้อผิดพลาดในการบันทึกข้อมูล"})
-	}
-
-	// เปลี่ยนจาก fiber.H เป็น fiber.Map
-	return c.JSON(fiber.Map{
-		"status":  "success",
-		"message": "อัปเดตข้อมูลเรียบร้อยแล้ว",
-		"data":    user,
-	})
-}
-func GetUserDetail(c *fiber.Ctx) error {
-	id := c.Params("id")
-
-	// เพิ่มตรงนี้เพื่อแก้ Log ID = 0 ✅
-	if id == "" || id == "0" || id == "undefined" {
-		return c.Status(400).JSON(fiber.Map{"error": "ไม่ระบุไอดีผู้ใช้"})
-	}
-
-	var user models.User
-	if err := database.DB.First(&user, id).Error; err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "ไม่พบสมาชิก"})
-	}
-	return c.JSON(user)
-}
-func HandleCreditAdjustment(c *fiber.Ctx) error {
-	id := c.Params("id")
-
-	// ดัก ID 0 หรือค่าว่างทันทีเพื่อไม่ให้เกิด Log record not found
-	if id == "" || id == "0" || id == "undefined" {
-		return c.Status(400).JSON(fiber.Map{"error": "ID ผู้ใช้งานไม่ถูกต้อง"})
-	}
-
-	type Request struct {
+	targetID := c.Params("id")
+	var req struct {
 		Amount float64 `json:"amount"`
 	}
-	var req Request
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
 	}
 
-	// ใช้ Transaction เพื่อความปลอดภัย
-	err := database.DB.Transaction(func(tx *gorm.DB) error {
-		var user models.User
-		if err := tx.First(&user, id).Error; err != nil {
-			return err // ถ้าหาไม่เจอจะ Rollback เอง
-		}
-
-		if err := tx.Model(&user).Update("credit", user.Credit+req.Amount).Error; err != nil {
-			return err
-		}
-		log := models.Transaction{
-			UserID: user.ID,
-			Amount: req.Amount,
-			Type:   "adjustment", // ระบุว่าเป็นการปรับปรุงโดยแอดมิน
-			Status: "approved",
-		}
-		if err := tx.Create(&log).Error; err != nil {
-			return err // ถ้าบันทึก Log ไม่สำเร็จ ให้ยกเลิกการเติมเงินด้วย
-		}
-		return nil
-	})
-
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "ปรับปรุงเครดิตล้มเหลว"})
+	if err := database.DB.Model(&models.User{}).Where("id = ?", targetID).
+		UpdateColumn("credit", gorm.Expr("credit + ?", req.Amount)).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "อัปเดตเครดิตไม่สำเร็จ"})
 	}
-	return c.JSON(fiber.Map{"message": "สำเร็จ"})
+	return c.JSON(fiber.Map{"message": "อัปเดตเครดิตเรียบร้อย"})
+}
+
+func DeleteUser(c *fiber.Ctx) error {
+	targetID := c.Params("id")
+
+	// ✅ เรียกใช้ GetUserID ได้แล้ว
+	if fmt.Sprintf("%v", GetUserID(c)) == targetID {
+		return c.Status(400).JSON(fiber.Map{"error": "ไม่สามารถลบบัญชีตัวเองได้"})
+	}
+
+	database.DB.Unscoped().Delete(&models.User{}, targetID)
+	return c.JSON(fiber.Map{"message": "ลบผู้ใช้งานถาวรเรียบร้อย"})
+}
+
+func GetNextUsername(c *fiber.Ctx) error {
+	// ✅ ปรับการเรียกใช้ (ไม่ต้องใส่ database.DB แล้ว)
+	return c.JSON(fiber.Map{"next_username": generateUsername()})
+}
+
+// ✅ 2. ปรับ generateUsername ให้ใช้ database.DB ภายในตัวเลย ไม่ต้องรับพารามิเตอร์
+func generateUsername() string {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for {
+		newUsername := fmt.Sprintf("Thunibet%d", r.Intn(90000)+10000)
+		var count int64
+		// ใช้ database.DB โดยตรง
+		database.DB.Model(&models.User{}).Where("username = ?", newUsername).Count(&count)
+		if count == 0 {
+			return newUsername
+		}
+	}
+}
+func GetUsers(c *fiber.Ctx) error {
+	var users []models.User
+	// ดึงข้อมูลผู้ใช้ทั้งหมด (เรียงตาม ID ล่าสุด)
+	if err := database.DB.Order("id desc").Find(&users).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถดึงข้อมูลผู้ใช้ได้"})
+	}
+	return c.JSON(users)
+}
+
+// ✅ แก้ปัญหา undefined: handlers.UpdateUser
+func UpdateUser(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var user models.User
+
+	// ตรวจสอบว่ามี User นี้จริงไหม
+	if err := database.DB.First(&user, id).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "ไม่พบผู้ใช้งาน"})
+	}
+
+	// รับข้อมูลที่จะอัปเดต (เช่น ชื่อ, นามสกุล, เบอร์โทร)
+	if err := c.BodyParser(&user); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
+	}
+
+	if err := database.DB.Save(&user).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "อัปเดตข้อมูลไม่สำเร็จ"})
+	}
+
+	return c.JSON(fiber.Map{"message": "อัปเดตผู้ใช้งานเรียบร้อย", "user": user})
+}
+
+// ✅ แก้ปัญหา undefined: handlers.GetAllBets
+func GetAllBets(c *fiber.Ctx) error {
+	var bets []models.BetSlip // เปลี่ยนจาก models.Bet เป็น models.BetSlip
+
+	// Preload("User") เพื่อดูว่าใครแทง และ Preload("Match") เพื่อดูรายละเอียดคู่บอล
+	if err := database.DB.Preload("User").Preload("Match").Order("id desc").Find(&bets).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถดึงรายการเดิมพันได้"})
+	}
+
+	return c.JSON(bets)
 }

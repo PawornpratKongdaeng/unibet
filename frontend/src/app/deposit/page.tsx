@@ -3,9 +3,10 @@ import { useState, useRef } from "react";
 import useSWR from "swr";
 import Header from "@/components/Header";
 import { apiFetch } from "@/lib/api";
-import { supabase } from "@/lib/supabase"; // <--- เชื่อมต่อ Supabase ตรงนี้
+import { supabase } from "@/lib/supabase"; 
 import Swal from "sweetalert2";
-import { Copy, Landmark, Upload, CheckCircle2, Wallet, AlertCircle } from "lucide-react";
+import { Copy, Landmark, Upload, CheckCircle2, Wallet, AlertCircle, ArrowLeft } from "lucide-react";
+import Link from "next/link";
 
 const fetcher = (url: string) => apiFetch(url).then(res => res.json());
 
@@ -28,37 +29,38 @@ export default function DepositPage() {
     }
   };
 
-  const showZincAlert = (icon: any, title: string, text?: string) => {
+  const showPremiumAlert = (icon: any, title: string, text?: string) => {
     Swal.fire({
       icon,
       title,
       text,
-      background: "#09090b",
+      background: "#013323",
       color: "#fff",
       confirmButtonColor: "#10b981", 
       customClass: {
-        popup: "rounded-[2rem] border border-zinc-800",
-        title: "font-black uppercase italic tracking-tighter",
+        popup: "rounded-[2.5rem] border border-[#044630] shadow-2xl",
+        title: "font-[1000] uppercase italic tracking-tighter text-2xl",
+        htmlContainer: "font-bold text-emerald-400/70"
       }
     });
   };
 
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (Number(amount) < 100) return showZincAlert('warning', 'ยอดฝากขั้นต่ำ 100 บาท');
-    if (!file) return showZincAlert('warning', 'กรุณาแนบสลิปโอนเงิน');
+    if (Number(amount) < 100) return showPremiumAlert('warning', 'ยอดฝากขั้นต่ำ 100 บาท');
+    if (!file) return showPremiumAlert('warning', 'กรุณาแนบสลิปโอนเงิน');
 
     setLoading(true);
     Swal.fire({
       title: 'UPLOADING SLIP...',
+      html: 'กรุณารอสักครู่ ระบบกำลังตรวจสอบความปลอดภัย',
       allowOutsideClick: false,
       didOpen: () => Swal.showLoading(),
-      background: "#09090b",
+      background: "#013323",
       color: "#fff",
     });
 
     try {
-      // 1. อัปโหลดรูปไปที่ Supabase Storage (Bucket: slips)
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
       
@@ -68,30 +70,28 @@ export default function DepositPage() {
 
       if (uploadError) throw new Error("Upload failed");
 
-      // 2. ดึง Public URL ของรูปที่อัปโหลดสำเร็จ
       const { data: { publicUrl } } = supabase.storage
         .from('slips')
         .getPublicUrl(fileName);
 
-      // 3. ส่งข้อมูล JSON ไปที่ Backend API ของเรา
       const res = await apiFetch("/deposit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount: Number(amount),
-          slipUrl: publicUrl, // ส่ง URL รูปไปแทนตัวไฟล์
+          slipUrl: publicUrl,
         }),
       });
 
       if (!res.ok) throw new Error("API failed");
 
-      showZincAlert('success', 'DEPOSIT SUCCESSFUL', 'เจ้าหน้าที่กำลังตรวจสอบรายการของคุณ');
+      showPremiumAlert('success', 'DEPOSIT SUCCESSFUL', 'เจ้าหน้าที่กำลังตรวจสอบรายการของคุณ');
       setAmount("");
       setFile(null);
       setPreview(null);
     } catch (err) {
       console.error(err);
-      showZincAlert('error', 'FAILED', 'เกิดข้อผิดพลาดในการอัปโหลดหรือบันทึกข้อมูล');
+      showPremiumAlert('error', 'FAILED', 'เกิดข้อผิดพลาดในการส่งข้อมูล กรุณาลองใหม่');
     } finally {
       setLoading(false);
     }
@@ -104,82 +104,103 @@ export default function DepositPage() {
       position: 'top-end',
       showConfirmButton: false,
       timer: 2000,
-      background: '#18181b',
-      color: '#fff'
+      background: '#022c1e',
+      color: '#10b981'
     });
-    Toast.fire({ icon: 'success', title: 'คัดลอกเลขบัญชีแล้ว' });
+    Toast.fire({ icon: 'success', title: 'คัดลอกเลขบัญชีสำเร็จ' });
   };
 
   return (
-    <main className="min-h-screen bg-black text-white pb-20 font-sans">
+    <main className="min-h-screen bg-[#013323] text-white pb-24 font-sans selection:bg-emerald-500/30">
       <Header />
       
-      <div className="max-w-2xl mx-auto px-6 pt-12 space-y-8">
-        <div className="flex flex-col items-center text-center space-y-2">
-          <div className="w-16 h-16 bg-emerald-500/10 rounded-3xl flex items-center justify-center text-emerald-500 border border-emerald-500/20 mb-2">
-            <Wallet size={32} />
+      <div className="max-w-4xl mx-auto px-6 pt-10 space-y-10">
+        
+        {/* 🏆 Header Section */}
+        <div className="flex flex-col sm:flex-row justify-between items-center sm:items-end gap-6 text-center sm:text-left">
+          <div className="space-y-2">
+            <div className="flex items-center justify-center sm:justify-start gap-2">
+                <div className="w-1.5 h-6 bg-emerald-500 rounded-full"></div>
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400">Secure Payment</p>
+            </div>
+            <h1 className="text-4xl sm:text-5xl font-[1000] italic tracking-tighter uppercase leading-none">
+              Deposit <span className="text-emerald-500">Funds</span>
+            </h1>
           </div>
-          <h1 className="text-4xl font-black italic uppercase tracking-tighter">Deposit <span className="text-emerald-500 text-stroke-sm">Funds</span></h1>
-          <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-[0.3em]">ระบบแจ้งฝากเครดิตอัตโนมัติ</p>
+          <Link href="/" className="group flex items-center gap-2 bg-white text-[#013323] px-6 py-3 rounded-2xl font-[1000] text-[10px] uppercase italic transition-all hover:bg-emerald-400 active:scale-95 shadow-xl">
+             <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform" />
+             Back to Lobby
+          </Link>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           
-          <div className="space-y-4">
-             <p className="text-zinc-600 text-[10px] font-black uppercase tracking-widest ml-2">Transfer Destination</p>
-             <div className="bg-zinc-950 border border-zinc-900 p-8 rounded-[2.5rem] relative overflow-hidden group">
-               <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-                  <Landmark size={120} />
+          {/* 🏦 1. Bank Destination (Col 2/5) */}
+          <div className="lg:col-span-2 space-y-6">
+             <p className="text-emerald-400/50 text-[10px] font-black uppercase tracking-widest ml-2">Destination Account</p>
+             <div className="bg-[#022c1e] border border-[#044630] p-8 rounded-[3rem] relative overflow-hidden group shadow-2xl">
+               <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:rotate-12 duration-700">
+                  <Landmark size={140} />
                </div>
                
                {adminBank ? (
-                 <div className="relative z-10 space-y-6">
-                   <div className="space-y-1">
-                     <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">{adminBank.bank_name}</p>
-                     <h2 className="text-3xl font-mono font-black tracking-tighter text-white">{adminBank.account_number}</h2>
-                     <p className="text-zinc-400 text-xs font-bold uppercase italic">{adminBank.account_name}</p>
+                 <div className="relative z-10 space-y-8">
+                   <div className="space-y-2">
+                     <p className="inline-block bg-emerald-500 text-[#013323] px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-tighter mb-2">{adminBank.bank_name}</p>
+                     <h2 className="text-3xl sm:text-4xl font-mono font-[1000] tracking-tighter text-white leading-none">
+                        {adminBank.account_number}
+                     </h2>
+                     <p className="text-emerald-400/60 text-xs font-black uppercase italic tracking-wide">{adminBank.account_name}</p>
                    </div>
                    
                    <button 
                     onClick={() => copyToClipboard(adminBank.account_number)}
-                    className="flex items-center gap-2 bg-white text-black px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-400 transition-all active:scale-95 shadow-lg shadow-white/5"
+                    className="w-full flex items-center justify-center gap-2 bg-white text-[#013323] py-4 rounded-2xl text-[10px] font-[1000] uppercase italic tracking-widest hover:bg-emerald-400 transition-all active:scale-95 shadow-xl"
                    >
-                     <Copy size={14} /> Copy Account
+                     <Copy size={14} /> Copy Account Number
                    </button>
                  </div>
                ) : (
-                 <div className="py-10 text-center text-zinc-700 animate-pulse italic text-xs uppercase font-black">Connecting Secure Line...</div>
+                 <div className="py-12 text-center">
+                    <div className="animate-spin w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+                    <p className="text-emerald-400/30 text-[10px] font-black uppercase italic tracking-widest">Securing Line...</p>
+                 </div>
                )}
              </div>
 
-             <div className="flex items-start gap-3 p-4 bg-zinc-900/30 rounded-2xl border border-zinc-900">
-               <AlertCircle className="text-zinc-600 shrink-0" size={18} />
-               <p className="text-[10px] text-zinc-500 font-medium leading-relaxed uppercase">กรุณาโอนเงินด้วยบัญชีที่ลงทะเบียนไว้เท่านั้น เพื่อความรวดเร็วในการตรวจสอบ</p>
+             <div className="flex items-start gap-4 p-5 bg-[#022c1e]/50 rounded-[2rem] border border-[#044630]">
+               <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-500 shrink-0">
+                  <AlertCircle size={20} />
+               </div>
+               <p className="text-[10px] text-emerald-400/70 font-bold leading-relaxed uppercase">
+                กรุณาโอนเงินด้วยบัญชีที่ลงทะเบียนไว้เท่านั้น ระบบอัตโนมัติจะเติมเครดิตให้ภายใน 1-3 นาที
+               </p>
              </div>
           </div>
 
-          <form onSubmit={handleDeposit} className="space-y-6">
+          {/* 📝 2. Deposit Form (Col 3/5) */}
+          <form onSubmit={handleDeposit} className="lg:col-span-3 space-y-8">
             <div className="space-y-4">
-              <p className="text-zinc-600 text-[10px] font-black uppercase tracking-widest ml-2">Amount to Deposit</p>
+              <p className="text-emerald-400/50 text-[10px] font-black uppercase tracking-widest ml-2">Deposit Amount</p>
               <div className="relative group">
-                <span className="absolute left-6 top-1/2 -translate-y-1/2 text-zinc-700 group-focus-within:text-emerald-500 font-black text-2xl transition-colors">฿</span>
+                <span className="absolute left-8 top-1/2 -translate-y-1/2 text-emerald-500/30 group-focus-within:text-emerald-400 font-[1000] text-3xl transition-colors italic">฿</span>
                 <input 
                   type="number" 
                   placeholder="0.00"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-900 p-6 pl-14 rounded-[2rem] text-4xl font-black italic tracking-tighter outline-none focus:border-emerald-500/50 transition-all shadow-2xl"
+                  className="w-full bg-[#022c1e] border border-[#044630] p-8 pl-16 rounded-[2.5rem] text-5xl font-[1000] italic tracking-tighter outline-none focus:border-emerald-500/50 transition-all shadow-2xl text-white placeholder:text-emerald-950"
                   required
                 />
               </div>
               
               <div className="grid grid-cols-3 gap-3">
-                {[100, 500, 1000].map((val) => (
+                {[100, 500, 1000, 5000].map((val) => (
                   <button
                     key={val}
                     type="button"
                     onClick={() => setAmount(val.toString())}
-                    className="py-3 bg-zinc-900/50 hover:bg-white hover:text-black rounded-xl text-[10px] font-black border border-zinc-800 transition-all uppercase italic shadow-sm"
+                    className="py-4 bg-[#022c1e] hover:bg-emerald-500 hover:text-[#013323] rounded-2xl text-[10px] font-black border border-[#044630] transition-all uppercase italic shadow-lg active:scale-95"
                   >
                     +{val.toLocaleString()}
                   </button>
@@ -188,25 +209,30 @@ export default function DepositPage() {
             </div>
 
             <div className="space-y-4">
-              <p className="text-zinc-600 text-[10px] font-black uppercase tracking-widest ml-2">Upload Transfer Slip</p>
+              <p className="text-emerald-400/50 text-[10px] font-black uppercase tracking-widest ml-2">Transfer Slip Verification</p>
               <div 
                 onClick={() => fileInputRef.current?.click()}
-                className={`relative h-56 w-full border-2 border-dashed rounded-[2.5rem] flex flex-col items-center justify-center cursor-pointer transition-all group overflow-hidden ${preview ? 'border-emerald-500/50' : 'border-zinc-900 hover:border-zinc-700 bg-zinc-950'}`}
+                className={`relative h-64 w-full border-2 border-dashed rounded-[3rem] flex flex-col items-center justify-center cursor-pointer transition-all group overflow-hidden ${preview ? 'border-emerald-500/50 bg-[#022c1e]' : 'border-[#044630] hover:border-emerald-500/30 bg-[#022c1e]'}`}
               >
                 {preview ? (
                   <>
-                    <img src={preview} alt="Slip Preview" className="h-full w-full object-cover opacity-40 group-hover:scale-110 transition-transform duration-700" />
-                    <div className="absolute inset-0 flex flex-col items-center justify-center space-y-2 bg-black/40">
-                      <CheckCircle2 className="text-emerald-500" size={32} />
-                      <span className="bg-white text-black px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest shadow-xl">Change Slip</span>
+                    <img src={preview} alt="Slip Preview" className="h-full w-full object-cover opacity-30 group-hover:scale-110 transition-transform duration-1000" />
+                    <div className="absolute inset-0 flex flex-col items-center justify-center space-y-3 bg-[#013323]/60 backdrop-blur-sm">
+                      <div className="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center shadow-2xl shadow-emerald-500/40">
+                        <CheckCircle2 className="text-[#013323]" size={32} />
+                      </div>
+                      <span className="bg-white text-[#013323] px-6 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest italic shadow-xl">Change Transfer Slip</span>
                     </div>
                   </>
                 ) : (
-                  <div className="flex flex-col items-center space-y-3">
-                    <div className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center text-zinc-600 group-hover:text-emerald-500 group-hover:bg-emerald-500/10 transition-all">
-                      <Upload size={20} />
+                  <div className="flex flex-col items-center space-y-4">
+                    <div className="w-16 h-16 bg-[#013323] rounded-[1.5rem] flex items-center justify-center text-emerald-500 border border-[#044630] group-hover:scale-110 group-hover:border-emerald-500 transition-all duration-300">
+                      <Upload size={28} />
                     </div>
-                    <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Tap to upload slip</p>
+                    <div className="text-center">
+                        <p className="text-[11px] font-[1000] text-white uppercase tracking-widest mb-1 italic">Click to Upload Slip</p>
+                        <p className="text-[9px] font-bold text-emerald-400/30 uppercase tracking-[0.2em]">JPG, PNG or PDF (Max 5MB)</p>
+                    </div>
                   </div>
                 )}
               </div>
@@ -215,13 +241,22 @@ export default function DepositPage() {
 
             <button 
               disabled={loading}
-              className={`w-full py-6 rounded-[2rem] font-black italic uppercase tracking-[0.2em] text-sm transition-all shadow-2xl active:scale-[0.98] ${
+              className={`w-full py-8 rounded-[2.5rem] font-[1000] italic uppercase tracking-[0.2em] text-sm transition-all shadow-2xl active:scale-[0.98] flex items-center justify-center gap-3 ${
                 loading 
-                ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
-                : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/20'
+                ? 'bg-[#044630] text-emerald-800 cursor-not-allowed' 
+                : 'bg-emerald-500 hover:bg-emerald-400 text-[#013323] shadow-emerald-500/20'
               }`}
             >
-              {loading ? 'Processing Transaction...' : 'Confirm Deposit'}
+              {loading ? (
+                <>
+                  <div className="animate-spin w-5 h-5 border-2 border-[#013323] border-t-transparent rounded-full"></div>
+                  Processing Transaction...
+                </>
+              ) : (
+                <>
+                  <Wallet size={18} /> Confirm Deposit
+                </>
+              )}
             </button>
           </form>
         </div>
