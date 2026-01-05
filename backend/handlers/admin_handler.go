@@ -20,39 +20,6 @@ func GetUserID(c *fiber.Ctx) uint {
 	return id
 }
 
-func AdjustUserBalance(c *fiber.Ctx) error {
-	targetID := c.Params("id")
-	var req struct {
-		Amount float64 `json:"amount"`
-	}
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
-	}
-
-	if err := database.DB.Model(&models.User{}).Where("id = ?", targetID).
-		UpdateColumn("credit", gorm.Expr("credit + ?", req.Amount)).Error; err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "อัปเดตเครดิตไม่สำเร็จ"})
-	}
-	return c.JSON(fiber.Map{"message": "อัปเดตเครดิตเรียบร้อย"})
-}
-
-func DeleteUser(c *fiber.Ctx) error {
-	userID := c.Params("id")
-
-	// ตรวจสอบว่ามี User นี้อยู่จริงไหมก่อนลบ
-	var user models.User
-	if err := database.DB.First(&user, userID).Error; err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "ไม่พบผู้ใช้งานนี้ในระบบ"})
-	}
-
-	// ลบผู้ใช้งาน (แนะนำเป็น Soft Delete หากโมเดลรองรับ)
-	if err := database.DB.Delete(&user).Error; err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถลบผู้ใช้งานได้"})
-	}
-
-	return c.JSON(fiber.Map{"message": "ลบผู้ใช้งานเรียบร้อยแล้ว"})
-}
-
 func GetNextUsername(c *fiber.Ctx) error {
 	// ✅ ปรับการเรียกใช้ (ไม่ต้องใส่ database.DB แล้ว)
 	return c.JSON(fiber.Map{"next_username": generateUsername()})
@@ -112,4 +79,45 @@ func GetAllBets(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(bets)
+}
+
+// POST /api/v3/admin/users/:id/credit
+func AdjustUserBalance(c *fiber.Ctx) error {
+	targetID := c.Params("id")
+	type Request struct {
+		Amount float64 `json:"amount"`
+	}
+	var req Request
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
+	}
+
+	// อัปเดตเครดิตใน Postgres
+	if err := database.DB.Model(&models.User{}).Where("id = ?", targetID).
+		UpdateColumn("credit", gorm.Expr("credit + ?", req.Amount)).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "อัปเดตไม่สำเร็จ"})
+	}
+	return c.JSON(fiber.Map{"message": "ปรับปรุงเครดิตสำเร็จ"})
+}
+
+// DELETE /api/v3/admin/users/:id
+func DeleteUser(c *fiber.Ctx) error {
+	userID := c.Params("id")
+	if err := database.DB.Delete(&models.User{}, userID).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "ลบไม่สำเร็จ"})
+	}
+	return c.JSON(fiber.Map{"message": "ลบผู้ใช้เรียบร้อย"})
+}
+
+// ฟังก์ชันสุ่มชื่อผู้ใช้ใหม่ (ใช้ตอนสมัครสมาชิก)
+func GenerateNextUsername(c *fiber.Ctx) error {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for {
+		newUsername := fmt.Sprintf("Thunibet%d", r.Intn(90000)+10000)
+		var count int64
+		database.DB.Model(&models.User{}).Where("username = ?", newUsername).Count(&count)
+		if count == 0 {
+			return c.JSON(fiber.Map{"next_username": newUsername})
+		}
+	}
 }

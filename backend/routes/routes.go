@@ -51,6 +51,7 @@ func SetupRoutes(app *fiber.App) {
 		admin.Get("/users", handlers.GetUsers)
 		admin.Patch("/users/:id", handlers.UpdateUser)
 		admin.Post("/users/:id/credit", handlers.AdjustUserBalance)
+		admin.Delete("/users/:id", handlers.DeleteUser)
 
 		// Financial & Transactions
 		admin.Get("/finance/summary", handlers.GetFinanceSummary)

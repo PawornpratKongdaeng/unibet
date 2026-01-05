@@ -7,6 +7,18 @@ import (
 	"gorm.io/gorm"
 )
 
+func getIDFromLocals(c *fiber.Ctx) uint {
+	val := c.Locals("user_id")
+	switch v := val.(type) {
+	case uint:
+		return v
+	case float64:
+		return uint(v)
+	default:
+		return 0
+	}
+}
+
 // GET /api/v3/user/balance
 func GetBalance(c *fiber.Ctx) error {
 	var user models.User
@@ -40,30 +52,17 @@ func GetProfile(c *fiber.Ctx) error {
 }
 
 func GetMe(c *fiber.Ctx) error {
-	// 1. ดึง UserID จาก Middleware
-	userID := c.Locals("user_id")
-
-	if userID == nil {
+	userID := getIDFromLocals(c)
+	if userID == 0 {
 		return c.Status(401).JSON(fiber.Map{"error": "Unauthorized"})
 	}
 
 	var user models.User
-	// 2. ดึงข้อมูลจาก DB (เพิ่ม "phone" ลงใน Select)
-	// หมายเหตุ: ตรวจสอบชื่อคอลัมน์ใน DB ของคุณ ปกติจะเป็น "phone" (ตัวพิมพ์เล็ก)
-	result := database.DB.Select("id", "username", "role", "credit", "phone").First(&user, userID)
-
-	if result.Error != nil {
+	if err := database.DB.Select("id", "username", "role", "credit", "phone", "full_name").First(&user, userID).Error; err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
 	}
 
-	// 3. ส่ง JSON กลับไป
-	return c.JSON(fiber.Map{
-		"id":       user.ID,
-		"username": user.Username,
-		"role":     user.Role,
-		"phone":    user.Phone, // ✅ เปลี่ยน key เป็น "phone" (ตัวพิมพ์เล็ก) ให้ตรงกับ frontend
-		"credit":   user.Credit,
-	})
+	return c.JSON(user)
 }
 func UpdateUserCredit(c *fiber.Ctx) error {
 	userID := c.Params("id")
@@ -106,15 +105,19 @@ func UpdateUserCredit(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "อัปเดตเครดิตสำเร็จ"})
 }
 func GetMyBets(c *fiber.Ctx) error {
-	userID := c.Locals("user_id")
-	var bets []models.BetSlip
+	userID := getIDFromLocals(c)
+	var singleBets []models.BetSlip
+	var parlayBets []models.ParlayTicket
 
-	// ✅ ต้องมี .Preload("Match") เพื่อให้ข้อมูลชื่อทีมในตาราง Match ถูกดึงออกมาด้วย
-	if err := database.DB.Preload("Match").Where("user_id = ?", userID).Find(&bets).Error; err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-	}
+	// ดึงบอลเต็ง
+	database.DB.Preload("Match").Where("user_id = ?", userID).Order("created_at desc").Find(&singleBets)
+	// ดึงบอลชุด
+	database.DB.Preload("Items").Where("user_id = ?", userID).Order("created_at desc").Find(&parlayBets)
 
-	return c.JSON(bets)
+	return c.JSON(fiber.Map{
+		"single": singleBets,
+		"parlay": parlayBets,
+	})
 }
 func GetUserProfile(c *fiber.Ctx) error {
 	// ดึง userID จาก JWT (ที่เก็บไว้ใน Locals)
@@ -157,20 +160,4 @@ func GetBetHistory(c *fiber.Ctx) error {
 			"parlay": parlayBets,
 		},
 	})
-}
-func DeleteUser(c *fiber.Ctx) error {
-	userID := c.Params("id")
-
-	// ตรวจสอบว่ามี User นี้อยู่จริงไหมก่อนลบ
-	var user models.User
-	if err := database.DB.First(&user, userID).Error; err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "ไม่พบผู้ใช้งานนี้ในระบบ"})
-	}
-
-	// ลบผู้ใช้งาน (แนะนำเป็น Soft Delete หากโมเดลรองรับ)
-	if err := database.DB.Delete(&user).Error; err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถลบผู้ใช้งานได้"})
-	}
-
-	return c.JSON(fiber.Map{"message": "ลบผู้ใช้งานเรียบร้อยแล้ว"})
 }
