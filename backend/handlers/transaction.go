@@ -2,6 +2,10 @@ package handlers
 
 import (
 	"fmt"
+	"net/http"
+	"os"
+	"strconv"
+	"time"
 
 	"github.com/PawornpratKongdaeng/soccer/database"
 	"github.com/PawornpratKongdaeng/soccer/models"
@@ -25,27 +29,52 @@ func CreateDeposit(c *fiber.Ctx) error {
 		userID = v
 	}
 
-	// 2. รับค่า JSON จาก Frontend
-	var req DepositRequest
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูล JSON ไม่ถูกต้อง"})
-	}
+	// 2. รับค่าจาก Form (เปลี่ยนจาก BodyParser เพราะเราจะรับไฟล์ด้วย)
+	amountStr := c.FormValue("amount")
+	amount, _ := strconv.ParseFloat(amountStr, 64)
 
-	// 3. ตรวจสอบข้อมูล
-	if req.Amount < 100 {
+	if amount < 100 {
 		return c.Status(400).JSON(fiber.Map{"error": "ยอดฝากขั้นต่ำ 100 บาท"})
 	}
-	if req.SlipURL == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "ไม่พบ URL ของสลิป"})
+
+	// 3. รับไฟล์รูปภาพสลิปจากหน้าเว็บ
+	fileHeader, err := c.FormFile("slip")
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "กรุณาแนบไฟล์สลิป"})
 	}
 
-	// 4. บันทึกลง Database (ตาราง Transaction)
+	// 4. ขั้นตอนการอัปโหลดไปที่ Supabase ด้วย Service Role Key (Admin)
+	file, _ := fileHeader.Open()
+	defer file.Close()
+
+	// ตั้งชื่อไฟล์ใหม่เพื่อไม่ให้ซ้ำกัน
+	fileName := fmt.Sprintf("%d_%s", time.Now().Unix(), fileHeader.Filename)
+
+	supabaseURL := os.Getenv("SUPABASE_URL")
+	serviceKey := os.Getenv("SUPABASE_SERVICE_ROLE_KEY") // ต้องใช้คีย์ลับฝั่ง Backend
+	uploadURL := fmt.Sprintf("%s/storage/v1/object/slips/%s", supabaseURL, fileName)
+
+	// ส่งไฟล์ไปยัง Supabase Storage
+	req, _ := http.NewRequest("POST", uploadURL, file)
+	req.Header.Set("Authorization", "Bearer "+serviceKey)
+	req.Header.Set("Content-Type", fileHeader.Header.Get("Content-Type"))
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถอัปโหลดไฟล์ไปที่ Storage ได้"})
+	}
+
+	// สร้าง Public URL เพื่อเก็บลงฐานข้อมูล
+	finalSlipURL := fmt.Sprintf("%s/storage/v1/object/public/slips/%s", supabaseURL, fileName)
+
+	// 5. บันทึกลง Database
 	tx := models.Transaction{
 		UserID:  userID,
-		Amount:  req.Amount,
+		Amount:  amount,
 		Type:    "deposit",
 		Status:  "pending",
-		SlipURL: req.SlipURL, // เก็บ URL จาก Supabase ลงใน DB
+		SlipURL: finalSlipURL, // เก็บ URL ที่สร้างจาก Backend
 	}
 
 	if err := database.DB.Create(&tx).Error; err != nil {

@@ -52,8 +52,8 @@ export default function DepositPage() {
 
     setLoading(true);
     Swal.fire({
-      title: 'UPLOADING SLIP...',
-      html: 'กรุณารอสักครู่ ระบบกำลังตรวจสอบความปลอดภัย',
+      title: 'PROCESSING...',
+      html: 'กำลังส่งข้อมูลไปที่เซิร์ฟเวอร์...',
       allowOutsideClick: false,
       didOpen: () => Swal.showLoading(),
       background: "#013323",
@@ -61,40 +61,31 @@ export default function DepositPage() {
     });
 
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      
-      const { data: uploadData, error: uploadError } = await supabase.storage
-  .from('slips')
-  .upload(fileName, file, {
-    contentType: file.type, // ✅ ตรวจสอบว่า file ตัวนี้มีค่าและมี type
-    upsert: false
-  });
+      // 1. เตรียมข้อมูลแบบ FormData (สำคัญมากสำหรับส่งไฟล์)
+      const formData = new FormData();
+      formData.append("amount", amount); // ส่งยอดเงิน
+      formData.append("slip", file);     // ส่งไฟล์รูป (ต้องชื่อ 'slip' ให้ตรงกับที่ Go รอรับ)
 
-      if (uploadError) throw new Error("Upload failed");
+      // 2. ยิงไปที่ Backend โดยตรง (ไม่ต้องผ่าน Supabase Storage ที่หน้าบ้านแล้ว)
+      const res = await apiFetch("/user/deposit", {
+        method: "POST",
+        // หมายเหตุ: ห้ามใส่ Content-Type: application/json 
+        // เพราะ FormData จะจัดการ Boundary ของมันเองอัตโนมัติ
+        body: formData, 
+      });
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('slips')
-        .getPublicUrl(fileName);
-
-      const res = await apiFetch("/user/deposit", {  // ✅ เติม /user เข้าไป
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    amount: Number(amount),
-    slipUrl: publicUrl,
-  }),
-});
-
-      if (!res.ok) throw new Error("API failed");
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "API failed");
+      }
 
       showPremiumAlert('success', 'DEPOSIT SUCCESSFUL', 'เจ้าหน้าที่กำลังตรวจสอบรายการของคุณ');
       setAmount("");
       setFile(null);
       setPreview(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      showPremiumAlert('error', 'FAILED', 'เกิดข้อผิดพลาดในการส่งข้อมูล กรุณาลองใหม่');
+      showPremiumAlert('error', 'FAILED', err.message || 'เกิดข้อผิดพลาดในการส่งข้อมูล');
     } finally {
       setLoading(false);
     }
