@@ -84,7 +84,7 @@ export default function UnibetLoginPage() {
                     type="text"
                     required
                     className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3.5 pl-10 text-gray-900 outline-none focus:border-[#127447] focus:ring-1 focus:ring-[#127447] transition-all"
-                    placeholder="Username / Email"
+                    placeholder="Username"
                     onChange={(e) => setUsername(e.target.value)}
                   />
                 </div>
