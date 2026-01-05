@@ -18,10 +18,9 @@ func InitDB() {
 
 	dbUser := getEnv("DB_USER", "postgres")
 	dbPass := getEnv("DB_PASSWORD", "admin123")
-	dbHost := getEnv("DB_HOST", "soccer-db")
+	dbHost := getEnv("DB_HOST", "127.0.0.1") // เปลี่ยนจาก soccer-db เป็น 127.0.0.1
 	dbPort := getEnv("DB_PORT", "5432")
 	dbName := getEnv("DB_NAME", "soccer_db")
-	// ดึงค่า sslmode จาก env ถ้าไม่มีให้ใช้ disable (สำคัญมากสำหรับ Docker)
 	sslMode := getEnv("DB_SSLMODE", "disable")
 
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=Asia/Bangkok",
