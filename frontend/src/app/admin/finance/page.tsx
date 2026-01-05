@@ -1,19 +1,18 @@
 "use client";
+import React, { cloneElement } from "react"; // เพิ่ม React เข้ามา
 import useSWR from "swr";
 import { apiFetch } from "@/lib/api";
 import Swal from "sweetalert2";
 import { 
   TrendingUp, ArrowDownCircle, ArrowUpCircle, 
-  History, Eye, RefreshCcw, Landmark, FileCheck, 
-  Image as ImageIcon, User as UserIcon, Copy, XCircle, CheckCircle2
+  RefreshCcw, FileCheck, 
+  Image as ImageIcon, User as UserIcon, Copy, XCircle
 } from "lucide-react";
-import { cloneElement } from "react";
 
 // --- Configuration ---
 const IMAGE_BASE_URL = "http://localhost:8000"; 
 const fetcher = (url: string) => apiFetch(url).then(res => res.json());
 
-// 1. ตั้งค่า Toast สำหรับการแจ้งเตือนตอน Copy
 const Toast = Swal.mixin({
   toast: true,
   position: 'top-end',
@@ -25,7 +24,6 @@ const Toast = Swal.mixin({
 });
 
 export default function FinanceStats() {
-  // --- Data Fetching ---
   const { data: financeData } = useSWR("/admin/finance/summary", fetcher);
   const { data: pending, mutate: mutatePending } = useSWR("/admin/transactions/pending", fetcher, { refreshInterval: 5000 });
   const { data: history, mutate: mutateHistory } = useSWR("/admin/transactions/history", fetcher);
@@ -33,25 +31,20 @@ export default function FinanceStats() {
   const pendingDeposits = pending?.filter((tx: any) => tx.type === "deposit") || [];
   const pendingWithdrawals = pending?.filter((tx: any) => tx.type === "withdraw") || [];
 
-  // --- Helpers ---
   const copyToClipboard = (text: string) => {
     if (!text) return;
     navigator.clipboard.writeText(text);
-    Toast.fire({
-      icon: 'success',
-      title: 'Copied to clipboard'
-    });
+    Toast.fire({ icon: 'success', title: 'Copied to clipboard' });
   };
 
   const viewSlip = (path: string) => {
-    if (!path) return Swal.fire({ icon: 'error', title: 'SLIP NOT FOUND', background: '#fff' });
+    if (!path) return Swal.fire({ icon: 'error', title: 'SLIP NOT FOUND' });
     const imageUrl = path.startsWith('http') ? path : `${IMAGE_BASE_URL}${path}`;
 
     Swal.fire({
       title: `<p class="text-sm font-black uppercase text-slate-400">Slip Verification</p>`,
       imageUrl: imageUrl,
       imageWidth: 400,
-      background: '#fff',
       confirmButtonText: 'CLOSE',
       confirmButtonColor: '#0f172a',
       customClass: { popup: 'rounded-[2.5rem]', image: 'rounded-2xl border' }
@@ -60,7 +53,6 @@ export default function FinanceStats() {
 
   const handleAction = async (tx: any, action: 'approve' | 'reject') => {
     const isApprove = action === 'approve';
-    
     const result = await Swal.fire({
       title: isApprove ? 'CONFIRM PAYOUT?' : 'REJECT REQUEST?',
       html: `
@@ -74,7 +66,6 @@ export default function FinanceStats() {
               <p class="text-[10px] font-black text-emerald-600 uppercase">Transfer To</p>
               <p class="text-sm font-black text-slate-800">${tx.bank_name || 'N/A'}</p>
               <p class="text-md font-mono font-bold text-slate-900">${tx.account_number || '000-000-000'}</p>
-              <p class="text-[10px] font-bold text-slate-400 uppercase">${tx.account_name || 'Unknown Name'}</p>
             </div>
           ` : ''}
         </div>
@@ -82,8 +73,6 @@ export default function FinanceStats() {
       showCancelButton: true,
       confirmButtonText: isApprove ? 'YES, MARK PAID' : 'YES, REJECT',
       confirmButtonColor: isApprove ? '#10b981' : '#f43f5e',
-      background: '#fff',
-      customClass: { popup: 'rounded-[2.5rem]', confirmButton: 'rounded-xl font-bold px-8', cancelButton: 'rounded-xl font-bold' }
     });
 
     if (result.isConfirmed) {
@@ -101,8 +90,7 @@ export default function FinanceStats() {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-10 bg-slate-50/50 p-6 rounded-[3rem]">
-      
-      {/* --- Header --- */}
+      {/* Header */}
       <div className="flex justify-between items-center px-2">
         <div>
           <h1 className="text-4xl font-[1000] italic text-slate-900 uppercase tracking-tighter">
@@ -115,7 +103,7 @@ export default function FinanceStats() {
         </button>
       </div>
 
-      {/* --- Summary --- */}
+      {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <FinanceCard title="Total Deposit" value={financeData?.total_deposit || 0} icon={<ArrowDownCircle />} variant="emerald" />
         <FinanceCard title="Total Withdraw" value={financeData?.total_withdraw || 0} icon={<ArrowUpCircle />} variant="rose" />
@@ -123,8 +111,6 @@ export default function FinanceStats() {
       </div>
 
       <div className="grid grid-cols-1 gap-10">
-        
-        {/* --- Pending Withdrawals Table --- */}
         <div className="space-y-4">
           <SectionHeader title="Pending Withdraw Requests" count={pendingWithdrawals.length} color="text-rose-500" />
           <div className="bg-white border border-slate-100 rounded-[2.5rem] overflow-hidden shadow-sm">
@@ -152,13 +138,9 @@ export default function FinanceStats() {
                       </td>
                       <td className="px-8 py-6">
                         <div className="space-y-1">
-                          <span className="bg-emerald-50 text-emerald-600 text-[9px] font-black px-2 py-0.5 rounded-md uppercase">
-                            {tx.bank_name || 'N/A'}
-                          </span>
+                          <span className="bg-emerald-50 text-emerald-600 text-[9px] font-black px-2 py-0.5 rounded-md uppercase">{tx.bank_name || 'N/A'}</span>
                           <div className="flex items-center gap-2 group/copy">
-                            <p className="text-sm font-black text-slate-800 font-mono tracking-wider">
-                              {tx.account_number || '000-000-000'}
-                            </p>
+                            <p className="text-sm font-black text-slate-800 font-mono tracking-wider">{tx.account_number || '000-000-000'}</p>
                             <button onClick={() => copyToClipboard(tx.account_number)} className="opacity-0 group-hover/copy:opacity-100 p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-emerald-600 transition-all">
                               <Copy size={14} />
                             </button>
@@ -186,7 +168,6 @@ export default function FinanceStats() {
           </div>
         </div>
 
-        {/* --- Pending Deposits Table --- */}
         <div className="space-y-4">
           <SectionHeader title="Pending Deposits" count={pendingDeposits.length} color="text-emerald-600" />
           <div className="bg-white border border-slate-100 rounded-[2.5rem] overflow-hidden shadow-sm">
@@ -221,13 +202,12 @@ export default function FinanceStats() {
             {pendingDeposits.length === 0 && <EmptyState />}
           </div>
         </div>
-
       </div>
     </div>
   );
 }
 
-// --- Sub-Components ---
+// --- Sub-Components with Typed Props ---
 
 function EmptyState() {
   return (
@@ -240,7 +220,13 @@ function EmptyState() {
   );
 }
 
-function SectionHeader({ title, count, color }: any) {
+interface SectionHeaderProps {
+  title: string;
+  count: number;
+  color: string;
+}
+
+function SectionHeader({ title, count, color }: SectionHeaderProps) {
   return (
     <div className="flex items-center justify-between px-2">
       <h3 className={`text-sm font-[1000] uppercase ${color} italic tracking-wider flex items-center gap-3`}>
@@ -252,8 +238,15 @@ function SectionHeader({ title, count, color }: any) {
   );
 }
 
-function FinanceCard({ title, value, icon, variant }: any) {
-  const styles: any = {
+interface FinanceCardProps {
+  title: string;
+  value: number;
+  icon: React.ReactElement;
+  variant: 'emerald' | 'rose' | 'highlight';
+}
+
+function FinanceCard({ title, value, icon, variant }: FinanceCardProps) {
+  const styles: Record<string, any> = {
     emerald: { bg: "bg-white", textCol: "text-emerald-600", iconBg: "bg-emerald-50", iconCol: "text-emerald-600" },
     rose: { bg: "bg-white", textCol: "text-rose-500", iconBg: "bg-rose-50", iconCol: "text-rose-500" },
     highlight: { bg: "bg-emerald-600", textCol: "text-white", iconBg: "bg-white/20", iconCol: "text-white" }
@@ -263,7 +256,8 @@ function FinanceCard({ title, value, icon, variant }: any) {
   return (
     <div className={`p-8 rounded-[2.5rem] border border-slate-100 ${s.bg} shadow-sm group relative overflow-hidden transition-all duration-500 hover:shadow-xl`}>
       <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-6 ${s.iconBg} ${s.iconCol}`}>
-        {cloneElement(icon as React.ReactElement, { size: 28, strokeWidth: 2.5 })}
+        {/* แก้ไขจุดนี้: ใช้การ Cast type เป็น any เพื่อข้ามการเช็คเฉพาะจุดของ cloneElement */}
+        {cloneElement(icon, { size: 28, strokeWidth: 2.5 } as any)}
       </div>
       <p className={`${variant === 'highlight' ? 'text-emerald-100' : 'text-slate-400'} text-[10px] font-black uppercase tracking-widest mb-1`}>{title}</p>
       <h2 className={`text-5xl font-[1000] italic tracking-tighter ${s.textCol}`}>฿{value.toLocaleString()}</h2>

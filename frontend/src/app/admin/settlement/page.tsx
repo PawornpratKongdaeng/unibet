@@ -110,7 +110,6 @@ export default function SettlementPage() {
         </div>
       </div>
 
-      {/* Match List */}
       <div className="grid gap-6">
         {isLoading ? (
           <div className="py-32 text-center bg-[#022c1e]/50 rounded-[3rem] border border-dashed border-[#044630]">
@@ -123,86 +122,52 @@ export default function SettlementPage() {
               
               {/* Score Input Interface */}
               <div className="flex-1 flex items-center justify-center gap-8 w-full pl-2">
-                
-                {/* Home Team */}
                 <div className="flex-1 text-right">
                   <p className="text-xl font-[1000] text-white italic uppercase tracking-tighter leading-none mb-1">{match.home_team}</p>
-                  <p className="text-[9px] font-black text-emerald-400/20 uppercase tracking-widest">Host</p>
                 </div>
 
-                {/* VS / Input Box */}
                 <div className="flex items-center gap-4 py-6">
                   <input 
                     type="number" 
-                    placeholder="0" 
                     onChange={(e) => handleScoreChange(match.id, 'home', e.target.value)} 
-                    className="w-20 h-24 bg-[#013323] border-2 border-[#044630] rounded-[1.8rem] text-center text-4xl font-[1000] text-white focus:border-[#00b359] focus:ring-4 focus:ring-[#00b359]/10 outline-none transition-all shadow-2xl placeholder:text-[#044630]" 
+                    className="..." 
                   />
-                  <div className="flex flex-col items-center gap-1">
-                    <Swords className="text-[#044630] group-hover:text-[#00b359] transition-colors duration-500" size={24} />
-                    <span className="text-[8px] font-black text-emerald-400/10 uppercase tracking-tighter">VERSUS</span>
-                  </div>
+                  <Swords className="..." size={24} />
                   <input 
                     type="number" 
-                    placeholder="0" 
                     onChange={(e) => handleScoreChange(match.id, 'away', e.target.value)} 
-                    className="w-20 h-24 bg-[#013323] border-2 border-[#044630] rounded-[1.8rem] text-center text-4xl font-[1000] text-white focus:border-[#00b359] focus:ring-4 focus:ring-[#00b359]/10 outline-none transition-all shadow-2xl placeholder:text-[#044630]" 
+                    className="..." 
                   />
                 </div>
 
-                {/* Away Team */}
                 <div className="flex-1 text-left">
                   <p className="text-xl font-[1000] text-white italic uppercase tracking-tighter leading-none mb-1">{match.away_team}</p>
-                  <p className="text-[9px] font-black text-emerald-400/20 uppercase tracking-widest">Visitor</p>
                 </div>
               </div>
 
-              {/* Action & Stats Side */}
-              <div className="flex flex-row lg:flex-col xl:flex-row items-center gap-8 w-full lg:w-auto border-t lg:border-t-0 lg:border-l border-[#044630] p-6 lg:p-0 lg:pl-10">
-                
-                <div className="flex-1 lg:flex-none">
-                  <p className="text-[9px] text-emerald-400/30 font-[1000] uppercase tracking-widest mb-1">Total Pool</p>
-                  <div className="flex items-center gap-2">
-                     <Zap size={14} className="text-[#00b359]" />
-                     <p className="text-2xl font-[1000] text-white italic">฿{(match.total_bets || 0).toLocaleString()}</p>
-                  </div>
-                </div>
-
+              {/* Action Side - ปุ่มต้องอยู่ภายในวงเล็บของ map นี้เท่านั้น */}
+              <div className="flex items-center gap-8 border-[#044630] p-6 lg:p-0 lg:pl-10">
                 <button 
-                  onClick={() => submitSettlement(match)} 
-                  className="group relative flex-1 lg:flex-none px-12 py-5 bg-white text-[#013323] hover:bg-[#00b359] hover:text-white font-[1000] rounded-[1.8rem] transition-all duration-500 uppercase text-[10px] tracking-widest shadow-xl flex items-center gap-3 overflow-hidden"
+                  onClick={() => submitSettlement(match)} // ตรงนี้จะหา 'match' เจอแน่นอน
+                  className="group relative px-12 py-5 bg-white text-[#013323] hover:bg-[#00b359] hover:text-white font-[1000] rounded-[1.8rem] transition-all duration-500 uppercase text-[10px] tracking-widest shadow-xl flex items-center gap-3 overflow-hidden"
                 >
                   <Calculator size={16} />
-                  <span className="relative z-10">Confirm Result</span>
+                  <span>Confirm Result</span>
                 </button>
               </div>
 
-              {/* Background ID Decoration */}
               <span className="absolute -bottom-4 -left-2 text-[80px] font-[1000] text-white/[0.02] italic select-none">
                 #{match.id}
               </span>
             </div>
-          ))
+          )) // ปิด map ตรงนี้
         ) : (
-          <div className="text-center py-40 bg-[#022c1e]/30 rounded-[3.5rem] border-2 border-dashed border-[#044630] flex flex-col items-center justify-center gap-4">
-            <div className="w-16 h-16 bg-[#044630]/20 rounded-full flex items-center justify-center text-emerald-400/10">
-               <Trophy size={32} />
-            </div>
-            <p className="text-emerald-400/20 font-[1000] uppercase tracking-[0.4em] text-xs">Stadium Empty: All Matches Settled</p>
+          <div className="text-center py-40 ...">
+            <Trophy size={32} />
+            <p>All Matches Settled</p>
           </div>
         )}
       </div>
-      <button 
-  onClick={() => submitSettlement(match)}
-  className="relative group overflow-hidden px-10 py-5 bg-[#00b359] hover:bg-[#00cc66] text-[#013323] font-[1000] rounded-[2rem] transition-all duration-300 shadow-[0_10px_30px_-10px_rgba(0,179,89,0.5)] active:scale-95"
->
-  <div className="flex items-center gap-3 relative z-10 uppercase text-[11px] tracking-[0.2em] italic">
-    <Calculator size={18} className="group-hover:rotate-12 transition-transform" />
-    Authorize Settlement
-  </div>
-  {/* แสงเงาที่วิ่งผ่านเวลายกเมาส์วาง */}
-  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full duration-1000 transition-transform" />
-</button>
-    </div>
+      </div>
   );
 }

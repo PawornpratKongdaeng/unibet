@@ -37,6 +37,8 @@ export default function Home() {
   // Mockup ชื่อผู้ใช้ เนื่องจากใน context อาจไม่มี (ปรับแก้ตามจริง)
   const usernameMock = "THUNIBET28290";
 
+  const Modal = BetSlipModal as any;
+
 
   const { data: configData } = useSWR("/settings", fetcher, {
     refreshInterval: 30000,
@@ -259,14 +261,14 @@ export default function Home() {
 
       {/* Bet Slip Modal ยังคงเก็บไว้ เผื่อมีการเรียกใช้ */}
       {selectedBet && (
-        <BetSlipModal
-          selectedBet={selectedBet}
-          minBet={Number(settings.min_bet)}
-          maxBet={Number(settings.max_bet)}
-          onClose={() => setSelectedBet(null)}
-          onConfirm={handleConfirmBet}
-        />
-      )}
+  <Modal
+    selectedBet={selectedBet}
+    minBet={Number(settings.min_bet)}
+    maxBet={Number(settings.max_bet)}
+    onClose={() => setSelectedBet(null)}
+    onConfirm={handleConfirmBet}
+  />
+)}
     </main>
   );
 }
