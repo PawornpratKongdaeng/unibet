@@ -37,15 +37,20 @@ func AdjustUserBalance(c *fiber.Ctx) error {
 }
 
 func DeleteUser(c *fiber.Ctx) error {
-	targetID := c.Params("id")
+	userID := c.Params("id")
 
-	// ✅ เรียกใช้ GetUserID ได้แล้ว
-	if fmt.Sprintf("%v", GetUserID(c)) == targetID {
-		return c.Status(400).JSON(fiber.Map{"error": "ไม่สามารถลบบัญชีตัวเองได้"})
+	// ตรวจสอบว่ามี User นี้อยู่จริงไหมก่อนลบ
+	var user models.User
+	if err := database.DB.First(&user, userID).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "ไม่พบผู้ใช้งานนี้ในระบบ"})
 	}
 
-	database.DB.Unscoped().Delete(&models.User{}, targetID)
-	return c.JSON(fiber.Map{"message": "ลบผู้ใช้งานถาวรเรียบร้อย"})
+	// ลบผู้ใช้งาน (แนะนำเป็น Soft Delete หากโมเดลรองรับ)
+	if err := database.DB.Delete(&user).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถลบผู้ใช้งานได้"})
+	}
+
+	return c.JSON(fiber.Map{"message": "ลบผู้ใช้งานเรียบร้อยแล้ว"})
 }
 
 func GetNextUsername(c *fiber.Ctx) error {
