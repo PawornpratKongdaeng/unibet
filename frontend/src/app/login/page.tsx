@@ -130,9 +130,6 @@ export default function UnibetLoginPage() {
             </form>
 
             <div className="mt-6 text-center">
-              <button className="text-[#127447] text-xs font-semibold hover:underline">
-                Forgot your password?
-              </button>
             </div>
           </div>
 
