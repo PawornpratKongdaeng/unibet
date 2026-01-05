@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"time"
@@ -15,68 +14,46 @@ import (
 
 // [USER] แจ้งฝากเงิน (แก้ไขจาก Supabase เป็น Local Storage)
 func CreateDeposit(c *fiber.Ctx) error {
-	// 1. ดึง User ID จาก Middleware
 	val := c.Locals("user_id")
 	var userID uint
-	switch v := val.(type) {
-	case float64:
+	if v, ok := val.(float64); ok {
 		userID = uint(v)
-	case uint:
-		userID = v
-	default:
-		return c.Status(401).JSON(fiber.Map{"error": "Unauthorized"})
+	} else {
+		userID = val.(uint)
 	}
 
-	// 2. รับค่าจำนวนเงิน
 	amountStr := c.FormValue("amount")
 	amount, _ := strconv.ParseFloat(amountStr, 64)
 	if amount < 100 {
 		return c.Status(400).JSON(fiber.Map{"error": "ยอดฝากขั้นต่ำ 100 บาท"})
 	}
 
-	// 3. รับไฟล์รูปภาพสลิป
 	fileHeader, err := c.FormFile("slip")
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "กรุณาแนบไฟล์สลิป"})
 	}
 
-	// ✅ 4. ขั้นตอนการเซฟไฟล์ลงเครื่อง Ubuntu (แทนที่ Supabase)
 	uploadDir := "./uploads"
-	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
-		os.MkdirAll(uploadDir, 0777)
-	}
+	os.MkdirAll(uploadDir, 0755)
 
-	// ตั้งชื่อไฟล์ป้องกันชื่อซ้ำ
 	fileName := fmt.Sprintf("slip_%d_%d_%s", userID, time.Now().Unix(), fileHeader.Filename)
 	filePath := fmt.Sprintf("%s/%s", uploadDir, fileName)
 
 	if err := c.SaveFile(fileHeader, filePath); err != nil {
-		log.Printf("❌ SaveFile Error: %v", err)
-		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถบันทึกไฟล์สลิปลงเซิร์ฟเวอร์ได้"})
+		return c.Status(500).JSON(fiber.Map{"error": "บันทึกไฟล์ล้มเหลว"})
 	}
 
-	// Path สำหรับเก็บใน DB (เพื่อให้ Frontend ดึงไปแสดงผลได้)
-	finalSlipURL := "/uploads/" + fileName
-
-	// 5. บันทึกลง Database
 	tx := models.Transaction{
 		UserID:    userID,
 		Amount:    amount,
 		Type:      "deposit",
 		Status:    "pending",
-		SlipURL:   finalSlipURL,
+		SlipURL:   "/uploads/" + fileName, // Path สำหรับ Static Route
 		CreatedAt: time.Now(),
 	}
 
-	if err := database.DB.Create(&tx).Error; err != nil {
-		log.Printf("❌ Database Error: %v", err)
-		return c.Status(500).JSON(fiber.Map{"error": "เกิดข้อผิดพลาดในการบันทึกข้อมูลลงฐานข้อมูล"})
-	}
-
-	return c.JSON(fiber.Map{
-		"message": "แจ้งฝากสำเร็จ รอการตรวจสอบ",
-		"data":    tx,
-	})
+	database.DB.Create(&tx)
+	return c.JSON(fiber.Map{"message": "แจ้งฝากสำเร็จ", "data": tx})
 }
 
 // [USER] แจ้งถอนเงิน
@@ -171,25 +148,29 @@ func ApproveDeposit(c *fiber.Ctx) error {
 }
 
 // [ADMIN] อนุมัติการถอน (Approve Withdraw)
-func ApproveWithdraw(c *fiber.Ctx) error {
+func ApproveTransaction(c *fiber.Ctx) error {
 	txID := c.Params("id")
 
-	return database.DB.Transaction(func(dbTx *gorm.DB) error {
+	return database.DB.Transaction(func(tx *gorm.DB) error {
 		var transaction models.Transaction
-		if err := dbTx.First(&transaction, txID).Error; err != nil {
+		if err := tx.First(&transaction, txID).Error; err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "ไม่พบรายการ"})
 		}
 
-		if transaction.Status != "pending" || transaction.Type != "withdraw" {
-			return c.Status(400).JSON(fiber.Map{"error": "รายการนี้ถูกดำเนินการไปแล้ว"})
+		if transaction.Status != "pending" {
+			return c.Status(400).JSON(fiber.Map{"error": "ดำเนินการไปแล้ว"})
+		}
+
+		// ถ้าเป็นเงินฝาก ให้เพิ่มเครดิต
+		if transaction.Type == "deposit" {
+			tx.Model(&models.User{}).Where("id = ?", transaction.UserID).
+				Update("credit", gorm.Expr("credit + ?", transaction.Amount))
 		}
 
 		transaction.Status = "approved"
-		if err := dbTx.Save(&transaction).Error; err != nil {
-			return err
-		}
+		tx.Save(&transaction)
 
-		return c.JSON(fiber.Map{"message": "อนุมัติการถอนเงินเรียบร้อย"})
+		return c.JSON(fiber.Map{"message": "อนุมัติสำเร็จ"})
 	})
 }
 

@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"fmt"
-
 	"github.com/PawornpratKongdaeng/soccer/database"
 	"github.com/PawornpratKongdaeng/soccer/models"
 	"github.com/gofiber/fiber/v2"
@@ -116,56 +114,52 @@ func UpdateUserStatus(c *fiber.Ctx) error {
 func ApproveTransaction(c *fiber.Ctx) error {
 	txID := c.Params("id")
 
-	return database.DB.Transaction(func(dbTx *gorm.DB) error {
+	return database.DB.Transaction(func(tx *gorm.DB) error {
 		var transaction models.Transaction
-		if err := dbTx.First(&transaction, txID).Error; err != nil {
-			return err
+		if err := tx.First(&transaction, txID).Error; err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "ไม่พบรายการ"})
 		}
 
 		if transaction.Status != "pending" {
-			return fmt.Errorf("รายการนี้ถูกดำเนินการไปแล้ว")
+			return c.Status(400).JSON(fiber.Map{"error": "ดำเนินการไปแล้ว"})
 		}
 
-		// ถ้าเป็นรายการฝาก (Deposit) ต้องไปบวกเงินให้ลูกค้า
+		// ถ้าเป็นเงินฝาก ให้เพิ่มเครดิต
 		if transaction.Type == "deposit" {
-			if err := dbTx.Model(&models.User{}).Where("id = ?", transaction.UserID).
-				Update("credit", gorm.Expr("credit + ?", transaction.Amount)).Error; err != nil {
-				return err
-			}
+			tx.Model(&models.User{}).Where("id = ?", transaction.UserID).
+				Update("credit", gorm.Expr("credit + ?", transaction.Amount))
 		}
-		// ถ้าเป็นรายการถอน (Withdraw) เราหักเงินไปแล้วตอนแจ้งถอน (Hold)
-		// ดังนั้นตอน Approve แค่เปลี่ยนสถานะเป็น success ก็พอ
 
 		transaction.Status = "approved"
-		return dbTx.Save(&transaction).Error
+		tx.Save(&transaction)
+
+		return c.JSON(fiber.Map{"message": "อนุมัติสำเร็จ"})
 	})
 }
 
 // 6. RejectTransaction - ปฏิเสธรายการ
 func RejectTransaction(c *fiber.Ctx) error {
-	id := c.Params("id")
-	var transaction models.Transaction
+	txID := c.Params("id")
 
-	// ดึงข้อมูลรายการ และ Preload User เพื่อคืนเงิน
-	if err := database.DB.Preload("User").First(&transaction, id).Error; err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "ไม่พบรายการ"})
-	}
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		var transaction models.Transaction
+		tx.First(&transaction, txID)
 
-	if transaction.Status != "pending" {
-		return c.Status(400).JSON(fiber.Map{"error": "รายการนี้ถูกดำเนินการไปแล้ว"})
-	}
+		if transaction.Status != "pending" {
+			return c.Status(400).JSON(fiber.Map{"error": "ดำเนินการไปแล้ว"})
+		}
 
-	// ถ้าเป็นรายการถอน (Withdraw) แล้วโดน Reject ต้องคืนเงินเข้า Credit ลูกค้า
-	if transaction.Type == "withdraw" {
-		transaction.User.Credit += transaction.Amount
-		database.DB.Save(&transaction.User)
-	}
+		// ถ้าเป็นการถอน แล้วโดนปฏิเสธ ต้องคืนเครดิตให้ลูกค้า
+		if transaction.Type == "withdraw" {
+			tx.Model(&models.User{}).Where("id = ?", transaction.UserID).
+				Update("credit", gorm.Expr("credit + ?", transaction.Amount))
+		}
 
-	// อัปเดตสถานะเป็น rejected
-	transaction.Status = "rejected"
-	database.DB.Save(&transaction)
+		transaction.Status = "rejected"
+		tx.Save(&transaction)
 
-	return c.JSON(fiber.Map{"message": "ปฏิเสธรายการสำเร็จและคืนเครดิตแล้ว"})
+		return c.JSON(fiber.Map{"message": "ปฏิเสธรายการเรียบร้อย"})
+	})
 }
 
 func RequestWithdraw(c *fiber.Ctx) error {
