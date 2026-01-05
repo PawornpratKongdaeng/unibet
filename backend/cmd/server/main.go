@@ -25,7 +25,7 @@ func main() {
 		AllowOrigins:     "*",
 		AllowCredentials: false, // เปลี่ยนเป็น false
 	}))
-
+	app.Static("/uploads", "./uploads")
 	// 4. Setup Routes
 	routes.SetupRoutes(app)
 

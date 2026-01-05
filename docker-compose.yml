@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # 1. Database (Postgres)
+  db:
+    image: postgres:15-alpine
+    container_name: soccer-db
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: YourStrongPassword123
+      POSTGRES_DB: soccer_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 2. Backend (Go)
+  backend:
+    build: ./backend
+    container_name: soccer-backend
+    restart: always
+    depends_on:
+      - db
+    environment:
+      # เชื่อมต่อ DB ภายใน Network ของ Docker (ใช้ชื่อ service 'db')
+      DATABASE_URL: postgres://admin:YourStrongPassword123@db:5432/soccer_db
+      PORT: 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      # เชื่อมโฟลเดอร์รูปในเครื่อง VPS กับใน Container
+      - ./backend/uploads:/app/uploads
+
+  # 3. Frontend (Next.js)
+  frontend:
+    build: ./frontend
+    container_name: soccer-frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://IP_เครื่อง_VPS:8000/api/v3
+
+volumes:
+  postgres_data:

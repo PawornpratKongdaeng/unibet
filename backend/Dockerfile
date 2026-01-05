@@ -1,20 +1,16 @@
-FROM golang:1.25-alpine
-
-# ติดตั้งเครื่องมือสำหรับ SQLite
-RUN apk add --no-cache build-base
-
+# Stage 1: Build
+FROM golang:1.21-alpine AS builder
 WORKDIR /app
-
 COPY go.mod go.sum ./
 RUN go mod download
-
 COPY . .
+RUN go build -o main .
 
-# ตั้งค่า CGO และ Build
-ENV CGO_ENABLED=1
-# ตรวจสอบว่า main.go อยู่ใน cmd/server/ ใช่ไหม ถ้าใช่ให้ใช้ path นี้
-RUN go build -o main ./cmd/server/main.go
-
-EXPOSE 8080
-
+# Stage 2: Run
+FROM alpine:latest
+WORKDIR /app
+COPY --from=builder /app/main .
+# สร้างโฟลเดอร์สำหรับเก็บรูปสลิป
+RUN mkdir uploads
+EXPOSE 8000
 CMD ["./main"]
