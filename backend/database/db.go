@@ -17,26 +17,25 @@ func InitDB() {
 	var err error
 
 	dbUser := getEnv("DB_USER", "postgres")
-	dbPass := getEnv("DB_PASSWORD", "6SSDfEd6gtdaUDJX")
-	dbHost := getEnv("DB_HOST", "db.esicpsnbsacemrinbhnk.supabase.co")
+	dbPass := getEnv("DB_PASSWORD", "admin123")
+	dbHost := getEnv("DB_HOST", "soccer-db")
 	dbPort := getEnv("DB_PORT", "5432")
-	dbName := getEnv("DB_NAME", "postgres")
+	dbName := getEnv("DB_NAME", "soccer_db")
+	// ดึงค่า sslmode จาก env ถ้าไม่มีให้ใช้ disable (สำคัญมากสำหรับ Docker)
+	sslMode := getEnv("DB_SSLMODE", "disable")
 
-	// ✅ 2. เปลี่ยนรูปแบบ DSN ให้เป็นของ Postgres
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=require TimeZone=Asia/Bangkok",
-		dbHost, dbUser, dbPass, dbName, dbPort)
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=Asia/Bangkok",
+		dbHost, dbUser, dbPass, dbName, dbPort, sslMode)
 
-	log.Printf("📡 Connecting to Supabase (Postgres): %s:%s...", dbHost, dbPort)
+	log.Printf("📡 Connecting to Database: %s:%s (SSL: %s)...", dbHost, dbPort, sslMode)
 
-	// ✅ 3. เปลี่ยน gorm.Open เป็น postgres.Open
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatal("❌ Failed to connect to Supabase:", err) // เปลี่ยนข้อความ Error ให้ตรงกัน
+		log.Fatal("❌ Failed to connect to Database:", err)
 	}
 
-	log.Println("✅ Connected to Supabase successfully!")
+	log.Println("✅ Connected to Database successfully!")
 
-	// แก้ไขคอลัมน์อัตโนมัติ
 	FixMissingColumns()
 
 	DB.AutoMigrate(
@@ -53,31 +52,18 @@ func InitDB() {
 	seedAdmin()
 }
 
-// ฟังก์ชันสำหรับเช็คและเพิ่มคอลัมน์ที่ขาดหายไป (ปลอดภัยสำหรับ MySQL)
 func FixMissingColumns() {
 	m := DB.Migrator()
-
-	// 1. เช็คคอลัมน์ full_name
 	if !m.HasColumn(&models.User{}, "full_name") {
-		log.Println("🛠 Adding missing column: full_name")
 		DB.Exec("ALTER TABLE users ADD COLUMN full_name VARCHAR(255)")
 	}
-
-	// 2. เช็คคอลัมน์ phone
 	if !m.HasColumn(&models.User{}, "phone") {
-		log.Println("🛠 Adding missing column: phone")
 		DB.Exec("ALTER TABLE users ADD COLUMN phone VARCHAR(50)")
 	}
-
-	// 3. เช็คคอลัมน์ role
 	if !m.HasColumn(&models.User{}, "role") {
-		log.Println("🛠 Adding missing column: role")
 		DB.Exec("ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'user'")
 	}
-
-	// 4. เช็คคอลัมน์ credit
 	if !m.HasColumn(&models.User{}, "credit") {
-		log.Println("🛠 Adding missing column: credit")
 		DB.Exec("ALTER TABLE users ADD COLUMN credit DECIMAL(15,2) DEFAULT 0")
 	}
 }
@@ -92,22 +78,16 @@ func getEnv(key, fallback string) string {
 func seedAdmin() {
 	var count int64
 	DB.Model(&models.User{}).Count(&count)
-
 	if count == 0 {
 		password := "1234"
 		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), 10)
-
 		admin := models.User{
 			Username: "TideKung",
 			Password: string(hashedPassword),
 			Role:     "admin",
 			Credit:   10000,
 		}
-
-		if err := DB.Create(&admin).Error; err != nil {
-			log.Println("❌ Error seeding admin:", err)
-		} else {
-			log.Println("✅ Default Admin 'TideKung' created!")
-		}
+		DB.Create(&admin)
+		log.Println("✅ Default Admin 'TideKung' created!")
 	}
 }
