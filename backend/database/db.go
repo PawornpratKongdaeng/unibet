@@ -45,7 +45,7 @@ func InitDB() {
 		&models.BetSlip{},
 		&models.ParlayTicket{},
 		&models.ParlayItem{},
-		&models.Settlement{},
+
 		&models.Transaction{},
 		&models.Match{},
 		&models.BankAccount{},

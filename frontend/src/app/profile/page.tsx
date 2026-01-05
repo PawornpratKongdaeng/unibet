@@ -134,12 +134,6 @@ export default function ProfilePage() {
             title="Betting History" 
             sub="Check your past wagers" 
           />
-          <MenuLink 
-            href="/security"
-            icon={<Shield size={22} />} 
-            title="Security" 
-            sub="Password & Privacy" 
-          />
         </div>
 
         {/* Logout - ปรับเป็นโทนสีแดงเข้มเหมือน Dashboard Footer */}

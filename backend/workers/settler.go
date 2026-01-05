@@ -9,85 +9,92 @@ import (
 	"github.com/PawornpratKongdaeng/soccer/database"
 	"github.com/PawornpratKongdaeng/soccer/models"
 	"github.com/PawornpratKongdaeng/soccer/services"
+	"gorm.io/gorm"
 )
 
 func RunAutoSettlement() {
 	ticker := time.NewTicker(5 * time.Minute)
+	log.Println("🚀 [Worker] AutoSettlement started...")
+
 	for range ticker.C {
-		log.Println("🕒 [AutoSettlement] Cycle started...")
+		log.Println("🕒 [AutoSettlement] Cycle started at", time.Now().Format("15:04:05"))
 		processResults()
 		settleParlayTickets()
 	}
 }
 
 func processResults() {
-	resp, err := http.Get("https://htayapi.com/mmk-autokyay/v3/results?key=demoapi")
+	resp, err := http.Get("https://htayapi.com/mmk-autokyay/v3/results?key=eXBW5dl32piS2UbN75U1vikjWJJ9v7Ke")
 	if err != nil {
-		log.Printf("❌ [Worker] API Error: %v", err)
+		log.Printf("❌ [Worker] API Connection Error: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	var apiData models.HtayResultResponse
 	if err := json.NewDecoder(resp.Body).Decode(&apiData); err != nil {
+		log.Printf("❌ [Worker] JSON Decode Error: %v", err)
 		return
 	}
 
 	for _, res := range apiData.Data {
-		// เช็คเฉพาะคู่ที่จบแล้วเท่านั้น (FT, Finished, Closed)
+		// เช็คสถานะบอลจบ
 		if res.Status != "FT" && res.Status != "Finished" && res.Status != "Closed" {
 			continue
 		}
 
-		// --- 1. เคลียร์บอลเต็ง (BetSlip) ---
+		// 1. เคลียร์บอลเต็ง (BetSlip)
 		var pendingBets []models.BetSlip
 		database.DB.Where("match_id = ? AND status = ?", res.MatchID, "pending").Find(&pendingBets)
 
 		for _, bet := range pendingBets {
-			tx := database.DB.Begin()
-			// ใช้ defer เพื่อความปลอดภัย ถ้าพังมันจะ Rollback อัตโนมัติ
-			defer tx.Rollback()
+			// ใช้ Anonymous Function เพื่อให้ defer tx.Rollback() ทำงานทุกรอบของ Loop
+			func(b models.BetSlip) {
+				tx := database.DB.Begin()
+				defer tx.Rollback()
 
-			status, payout := services.CalculatePayout(bet.Amount, bet.Odds, bet.Hdp, bet.Pick, res.HomeScore, res.AwayScore)
+				status, payout := services.CalculatePayout(b.Amount, b.Odds, b.Hdp, b.Pick, res.HomeScore, res.AwayScore)
 
-			if err := tx.Model(&bet).Updates(map[string]interface{}{
-				"status":     status,
-				"payout":     payout,
-				"settled_at": time.Now(),
-			}).Error; err != nil {
-				continue
-			}
-
-			if payout > 0 {
-				// เปลี่ยนเป็น "credit" หรือ "balance" ให้ตรงกับตาราง User ของคุณ
-				if err := tx.Model(&models.User{}).Where("id = ?", bet.UserID).
-					UpdateColumn("balance", database.DB.Raw("balance + ?", payout)).Error; err != nil {
-					continue
+				if err := tx.Model(&b).Updates(map[string]interface{}{
+					"status":     status,
+					"payout":     payout,
+					"settled_at": time.Now(),
+				}).Error; err != nil {
+					return
 				}
-			}
-			tx.Commit()
+
+				if payout > 0 {
+					// แก้เป็น "credit" ตามตาราง User ของคุณ
+					if err := tx.Model(&models.User{}).Where("id = ?", b.UserID).
+						UpdateColumn("credit", gorm.Expr("credit + ?", payout)).Error; err != nil {
+						return
+					}
+				}
+				tx.Commit()
+				log.Printf("✅ [Single] BetID: %d settled as %s (Payout: %.2f)", b.ID, status, payout)
+			}(bet)
 		}
 
-		// --- 2. อัปเดตสถานะรายคู่ในสเต็ป (ParlayItem) ---
+		// 2. อัปเดตสถานะรายคู่ในสเต็ป (ParlayItem)
 		database.DB.Model(&models.ParlayItem{}).
 			Where("match_id = ? AND status = ?", res.MatchID, "pending").
-			Find(&models.ParlayItem{}). // กรองเฉพาะที่ยังไม่เคลียร์
-			ForEach(func(item *models.ParlayItem) {
+			Find(&models.ParlayItem{}).
+			ForEach(func(item *models.ParlayItem) error {
 				status, _ := services.CalculatePayout(0, 0, item.Hdp, item.Pick, res.HomeScore, res.AwayScore)
 				database.DB.Model(item).Update("status", status)
+				return nil
 			})
 	}
 }
 
 func settleParlayTickets() {
 	var tickets []models.ParlayTicket
-	// ดึงบิลสเต็ปที่ค้างอยู่ และดึงข้อมูลลูก (Items) มาด้วย
 	database.DB.Preload("Items").Where("status = ?", "pending").Find(&tickets)
 
 	for _, ticket := range tickets {
 		allFinished := true
 		totalMultiplier := 1.0
-		finalStatus := "win"
+		isLoss := false
 
 		for _, item := range ticket.Items {
 			if item.Status == "pending" {
@@ -95,55 +102,59 @@ func settleParlayTickets() {
 				break
 			}
 
-			// แปลง Odds พม่าเป็นตัวคูณทศนิยม (Decimal Odds)
-			// เช่น Odds 76 => 1.76
-			decimalOdds := 1 + (item.Odds / 100)
+			// ตัวคูณทศนิยม (Decimal Odds)
+			// ถ้าเก็บ odds 0.85 ใน DB ตัวคูณคือ 1.85
+			decimalOdds := 1 + item.Odds
 
 			switch item.Status {
 			case "win":
 				totalMultiplier *= decimalOdds
 			case "win_half":
-				// สูตรชนะครึ่ง: 1 + (กำไร / 2)
-				totalMultiplier *= 1 + ((decimalOdds - 1) / 2)
+				totalMultiplier *= 1 + (item.Odds / 2)
 			case "draw":
 				totalMultiplier *= 1.0
 			case "lose_half":
 				totalMultiplier *= 0.5
 			case "loss", "lost":
 				totalMultiplier = 0
-				finalStatus = "loss"
+				isLoss = true
 			}
 
-			if finalStatus == "loss" {
+			if isLoss {
 				break
 			}
 		}
 
-		if allFinished || finalStatus == "loss" {
-			tx := database.DB.Begin()
-			defer tx.Rollback()
+		// ถ้าตาย (isLoss) หรือ จบครบทุกคู่ (allFinished) ให้จ่ายเงิน
+		if isLoss || allFinished {
+			func(t models.ParlayTicket, mult float64, loss bool) {
+				tx := database.DB.Begin()
+				defer tx.Rollback()
 
-			payout := ticket.Amount * totalMultiplier
+				finalStatus := "win"
+				if loss {
+					finalStatus = "loss"
+				} else if mult == 1.0 {
+					finalStatus = "draw"
+				}
 
-			// ถ้าผลรวม multiplier เป็น 1 (เจ๊าทุกคู่) สถานะควรเป็น draw
-			if finalStatus == "win" && totalMultiplier == 1.0 {
-				finalStatus = "draw"
-			}
+				payout := t.Amount * mult
 
-			if err := tx.Model(&ticket).Updates(map[string]interface{}{
-				"total_odds": totalMultiplier,
-				"payout":     payout,
-				"status":     finalStatus,
-				"settled_at": time.Now(),
-			}).Error; err != nil {
-				continue
-			}
+				if err := tx.Model(&t).Updates(map[string]interface{}{
+					"status":     finalStatus,
+					"payout":     payout,
+					"settled_at": time.Now(),
+				}).Error; err != nil {
+					return
+				}
 
-			if payout > 0 {
-				tx.Model(&models.User{}).Where("id = ?", ticket.UserID).
-					UpdateColumn("balance", database.DB.Raw("balance + ?", payout))
-			}
-			tx.Commit()
+				if payout > 0 {
+					tx.Model(&models.User{}).Where("id = ?", t.UserID).
+						UpdateColumn("credit", gorm.Expr("credit + ?", payout))
+				}
+				tx.Commit()
+				log.Printf("🎰 [Parlay] TicketID: %d settled as %s (Total Mult: %.2f)", t.ID, finalStatus, mult)
+			}(ticket, totalMultiplier, isLoss)
 		}
 	}
 }

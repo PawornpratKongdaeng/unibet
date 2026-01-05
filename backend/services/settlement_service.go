@@ -3,7 +3,6 @@ package services
 import (
 	"fmt"
 	"log"
-	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,10 +24,14 @@ var (
 type ResultsResponse struct {
 	Status string `json:"status"`
 	Data   []struct {
-		MatchID   string `json:"match_id"`
-		HomeScore int    `json:"home_score"`
-		AwayScore int    `json:"away_score"`
-		Status    string `json:"status"`
+		ID     string `json:"id"` // API ใช้ "id" เป็นตัวเลขแมตช์
+		Status string `json:"status"`
+		Scores struct {
+			FullTime struct {
+				Home int `json:"home"`
+				Away int `json:"away"`
+			} `json:"full_time"`
+		} `json:"scores"`
 	} `json:"data"`
 }
 
@@ -87,11 +90,17 @@ func AutoSettlement() {
 	})
 	for _, r := range apiData.Data {
 		s := strings.ToUpper(r.Status)
-		finished := (s == "FT" || s == "FINISHED" || s == "CLOSED")
-		resultsMap[r.MatchID] = struct {
+		// เพิ่ม "COMPLETED" เข้าไปเพื่อให้ระบบยอมรับผลบอลคู่นี้
+		finished := (s == "FT" || s == "FINISHED" || s == "CLOSED" || s == "COMPLETED")
+
+		resultsMap[r.ID] = struct {
 			Home, Away int
 			IsFinished bool
-		}{r.HomeScore, r.AwayScore, finished}
+		}{
+			r.Scores.FullTime.Home, // ดึงคะแนนทีมเหย้า
+			r.Scores.FullTime.Away, // ดึงคะแนนทีมเยือน
+			finished,
+		}
 	}
 
 	for _, bet := range pendingBets {
@@ -111,9 +120,8 @@ func AutoSettlement() {
 			updateResult := tx.Model(&bet).
 				Where("id = ? AND status = ?", bet.ID, "pending").
 				Updates(map[string]interface{}{
-					"status":     status,
-					"payout":     payout,
-					"settled_at": time.Now(),
+					"status": status,
+					"payout": payout,
 				})
 
 			if updateResult.Error != nil {
@@ -146,74 +154,57 @@ func AutoSettlement() {
 }
 
 // 3. ฟังก์ชันคำนวณผล (แก้ไขสูตรราคาน้ำพม่าให้ถูกต้อง)
-func CalculatePayout(amount, odds float64, hdp float64, pick string, home, away int) (string, float64) {
-	diff := float64(home) - float64(away)
+func CalculatePayout(amount float64, odds float64, hdp float64, pick string, homeScore int, awayScore int) (string, float64) {
+	// คำนวณผลต่างประตู (Home - Away)
+	diff := float64(homeScore - awayScore)
 
-	var finalDiff float64
-	if pick == "home" {
-		finalDiff = diff - hdp
+	// สรุปผลในมุมของทีมต่อ (Home)
+	// สูตร: (ผลต่างประตู + ราคาต่อรอง)
+	result := diff + hdp
+
+	finalStatus := ""
+	multiplier := 0.0
+
+	// แปลง Odds พม่า/มาเลย์ เป็นตัวคูณ (Decimal Odds)
+	// สมมติ odds ที่ส่งมาคือ 0.85 (น้ำดำ) ตัวคูณจะเป็น 1.85
+	decimalOdds := 1 + odds
+
+	if result > 0.25 {
+		finalStatus = "win"
+		multiplier = decimalOdds
+	} else if result == 0.25 {
+		finalStatus = "win_half"
+		multiplier = 1 + (odds / 2) // ชนะครึ่ง: ได้ทุนคืน + กำไรครึ่งเดียว
+	} else if result == 0 {
+		finalStatus = "draw"
+		multiplier = 1.0 // เสมอ: คืนทุน
+	} else if result == -0.25 {
+		finalStatus = "lose_half"
+		multiplier = 0.5 // เสียครึ่ง: คืนทุนให้ครึ่งหนึ่ง
 	} else {
-		finalDiff = hdp - diff
+		finalStatus = "loss"
+		multiplier = 0.0 // เสียเต็ม
 	}
 
-	var status string
-	var payout float64
-
-	// 1. วิเคราะห์สถานะจากแต้มต่อ (HDP)
-	switch {
-	case finalDiff >= 0.5:
-		status = "win"
-	case finalDiff == 0.25:
-		status = "win_half"
-	case finalDiff == 0:
-		status = "draw"
-	case finalDiff == -0.25:
-		status = "lose_half"
-	default:
-		status = "loss"
-	}
-
-	// 2. คำนวณเงินตามราคาน้ำ (Myanmar Kyay Logic)
-	// ราคาน้ำบวก (เช่น 60): แทง 100 ได้ 60, เสีย 100
-	// ราคาน้ำลบ (เช่น -80): แทง 100 ได้ 100, เสีย 80
-
-	if status == "draw" {
-		return "draw", amount // เสมอคืนทุน
-	}
-
-	if odds >= 0 {
-		// --- กรณีราคาน้ำบวก ---
-		profitFull := (amount * odds) / 100
-		switch status {
-		case "win":
-			payout = amount + profitFull
-		case "win_half":
-			payout = amount + (profitFull / 2)
-		case "lose_half":
-			payout = amount / 2
-		case "loss":
-			payout = 0
+	// ถ้า User แทงทีมรอง (Away) ให้สลับผลลัพธ์
+	if pick == "away" {
+		if finalStatus == "win" {
+			finalStatus = "loss"
+			multiplier = 0
+		} else if finalStatus == "win_half" {
+			finalStatus = "lose_half"
+			multiplier = 0.5
+		} else if finalStatus == "loss" {
+			finalStatus = "win"
+			multiplier = decimalOdds
+		} else if finalStatus == "lose_half" {
+			finalStatus = "win_half"
+			multiplier = 1 + (odds / 2)
 		}
-	} else {
-		// --- กรณีราคาน้ำลบ (เช่น -80) ---
-		absOdds := math.Abs(odds)
-		riskAmount := (amount * absOdds) / 100 // แทง 100 เสี่ยงจริงแค่ 80
-
-		switch status {
-		case "win":
-			payout = amount + amount // ได้กำไร 100 เต็ม (ทุน 100 + กำไร 100)
-		case "win_half":
-			payout = amount + (amount / 2)
-		case "lose_half":
-			// เสียครึ่งของยอดเสี่ยง (เสีย 40 จาก 80) -> คืนทุน 100 - 40 = 60
-			payout = amount - (riskAmount / 2)
-		case "loss":
-			// เสียเต็มยอดเสี่ยง (เสีย 80) -> คืนทุน 100 - 80 = 20
-			payout = amount - riskAmount
-		}
+		// draw ยังคงเป็น draw เหมือนเดิม
 	}
 
-	return status, payout
+	return finalStatus, amount * multiplier
 }
 
 // ParseHdp แปลงค่า HDP จาก String เป็น Float64

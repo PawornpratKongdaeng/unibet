@@ -32,14 +32,24 @@ func UpdateAdminBank(c *fiber.Ctx) error {
 	}
 
 	var bank models.BankAccount
-	database.DB.First(&bank, 1)
+	// 1. ตรวจสอบว่ามี ID 1 อยู่ในระบบไหม
+	result := database.DB.First(&bank, 1)
 
+	// 2. อัปเดตข้อมูลจาก Request
+	bank.ID = 1 // ล็อค ID ไว้ที่ 1 เสมอ
 	bank.BankName = req.BankName
 	bank.AccountName = req.AccountName
 	bank.AccountNumber = req.AccountNumber
 
-	if err := database.DB.Save(&bank).Error; err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถอัปเดตข้อมูลได้"})
+	// 3. ถ้าไม่พบ (ErrRecordNotFound) ให้ใช้ Create, ถ้าพบให้ใช้ Save (Update)
+	if result.Error != nil {
+		if err := database.DB.Create(&bank).Error; err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถสร้างข้อมูลได้"})
+		}
+	} else {
+		if err := database.DB.Save(&bank).Error; err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถอัปเดตข้อมูลได้"})
+		}
 	}
 
 	return c.JSON(fiber.Map{"message": "อัปเดตบัญชีธนาคารสำเร็จ", "data": bank})

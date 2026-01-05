@@ -101,10 +101,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <NavItem icon={<LayoutDashboard size={20}/>} label="หน้าหลัก" sublabel="Overview" href="/admin" active={pathname === "/admin"} />
             <NavItem icon={<Users size={20}/>} label="จัดการสมาชิก" sublabel="Users Control" href="/admin/users" active={pathname.includes("/users")} />
             <NavItem icon={<BadgeDollarSign size={20}/>} label="สรุปการเงิน" sublabel="Finance Dept" href="/admin/finance" active={pathname.includes("/finance")} />
-            <NavItem icon={<FileText size={20}/>} label="รายงานเดิมพัน" sublabel="Betting Logs" href="/admin/bets" active={pathname.includes("/bets")} />
-            <NavItem icon={<Gavel size={20}/>} label="จัดการผลบอล" sublabel="Settlement" href="/admin/settlement" active={pathname.includes("/settlement")} />
+           {/* <NavItem icon={<Gavel size={20}/>} label="จัดการผลบอล" sublabel="Settlement" href="/admin/settlement" active={pathname.includes("/settlement")} />} */}
             <NavItem icon={<Landmark size={20}/>} label="ตั้งค่าธนาคาร" sublabel="Bank API" href="/admin/bank-settings" active={pathname.includes("/bank-settings")} />
-            <NavItem icon={<Settings size={20}/>} label="ตั้งค่าระบบ" sublabel="System Config" href="/admin/settings" active={pathname.includes("/settings")} />
+          {/* <NavItem icon={<Settings size={20}/>} label="ตั้งค่าระบบ" sublabel="System Config" href="/admin/settings" active={pathname.includes("/settings")} /> */}
           </nav>
 
           {/* Logout Button */}

@@ -3,15 +3,29 @@ import useSWR from "swr";
 import { apiFetch } from "@/lib/api";
 import Swal from "sweetalert2";
 import { 
-  TrendingUp, Wallet, ArrowDownCircle, ArrowUpCircle, 
-  History, Eye, RefreshCcw, Landmark, FileCheck
+  TrendingUp, ArrowDownCircle, ArrowUpCircle, 
+  History, Eye, RefreshCcw, Landmark, FileCheck, 
+  Image as ImageIcon, User as UserIcon, Copy, XCircle, CheckCircle2
 } from "lucide-react";
 import { cloneElement } from "react";
 
-const IMAGE_BASE_URL = "http://localhost:8080";
+// --- Configuration ---
+const IMAGE_BASE_URL = "http://localhost:8000"; 
 const fetcher = (url: string) => apiFetch(url).then(res => res.json());
 
+// 1. ตั้งค่า Toast สำหรับการแจ้งเตือนตอน Copy
+const Toast = Swal.mixin({
+  toast: true,
+  position: 'top-end',
+  showConfirmButton: false,
+  timer: 2000,
+  timerProgressBar: true,
+  background: '#0f172a',
+  color: '#fff'
+});
+
 export default function FinanceStats() {
+  // --- Data Fetching ---
   const { data: financeData } = useSWR("/admin/finance/summary", fetcher);
   const { data: pending, mutate: mutatePending } = useSWR("/admin/transactions/pending", fetcher, { refreshInterval: 5000 });
   const { data: history, mutate: mutateHistory } = useSWR("/admin/transactions/history", fetcher);
@@ -19,217 +33,240 @@ export default function FinanceStats() {
   const pendingDeposits = pending?.filter((tx: any) => tx.type === "deposit") || [];
   const pendingWithdrawals = pending?.filter((tx: any) => tx.type === "withdraw") || [];
 
-  const handleAction = async (id: number, action: 'approve' | 'reject', type: string, amount: number) => {
+  // --- Helpers ---
+  const copyToClipboard = (text: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    Toast.fire({
+      icon: 'success',
+      title: 'Copied to clipboard'
+    });
+  };
+
+  const viewSlip = (path: string) => {
+    if (!path) return Swal.fire({ icon: 'error', title: 'SLIP NOT FOUND', background: '#fff' });
+    const imageUrl = path.startsWith('http') ? path : `${IMAGE_BASE_URL}${path}`;
+
+    Swal.fire({
+      title: `<p class="text-sm font-black uppercase text-slate-400">Slip Verification</p>`,
+      imageUrl: imageUrl,
+      imageWidth: 400,
+      background: '#fff',
+      confirmButtonText: 'CLOSE',
+      confirmButtonColor: '#0f172a',
+      customClass: { popup: 'rounded-[2.5rem]', image: 'rounded-2xl border' }
+    });
+  };
+
+  const handleAction = async (tx: any, action: 'approve' | 'reject') => {
     const isApprove = action === 'approve';
+    
     const result = await Swal.fire({
-      title: isApprove ? 'CONFIRM TRANSACTION?' : 'REJECT TRANSACTION?',
-      text: `${type.toUpperCase()} : ฿${amount.toLocaleString()}`,
-      icon: isApprove ? 'success' : 'warning',
+      title: isApprove ? 'CONFIRM PAYOUT?' : 'REJECT REQUEST?',
+      html: `
+        <div class="text-left bg-slate-50 p-6 rounded-3xl border border-slate-100 mt-4 space-y-4">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-bold text-slate-400 uppercase">Amount</span>
+            <span class="text-2xl font-[1000] text-slate-900 italic">฿${tx.amount.toLocaleString()}</span>
+          </div>
+          ${tx.type === 'withdraw' ? `
+            <div class="bg-white p-4 rounded-2xl border border-slate-200 space-y-1">
+              <p class="text-[10px] font-black text-emerald-600 uppercase">Transfer To</p>
+              <p class="text-sm font-black text-slate-800">${tx.bank_name || 'N/A'}</p>
+              <p class="text-md font-mono font-bold text-slate-900">${tx.account_number || '000-000-000'}</p>
+              <p class="text-[10px] font-bold text-slate-400 uppercase">${tx.account_name || 'Unknown Name'}</p>
+            </div>
+          ` : ''}
+        </div>
+      `,
       showCancelButton: true,
-      confirmButtonText: isApprove ? 'APPROVE' : 'REJECT',
+      confirmButtonText: isApprove ? 'YES, MARK PAID' : 'YES, REJECT',
       confirmButtonColor: isApprove ? '#10b981' : '#f43f5e',
-      background: '#fff', 
-      color: '#0f172a'
+      background: '#fff',
+      customClass: { popup: 'rounded-[2.5rem]', confirmButton: 'rounded-xl font-bold px-8', cancelButton: 'rounded-xl font-bold' }
     });
 
     if (result.isConfirmed) {
       try {
-        const res = await apiFetch(`/admin/transactions/${action}/${id}`, { method: 'POST' });
+        const res = await apiFetch(`/admin/transactions/${action}/${tx.id}`, { method: 'POST' });
         if (res.ok) {
-          Swal.fire({ icon: 'success', title: 'COMPLETED', timer: 1000, showConfirmButton: false });
-          mutatePending();
-          mutateHistory();
+          Toast.fire({ icon: 'success', title: 'Transaction Updated' });
+          mutatePending(); mutateHistory();
         }
       } catch (err) {
-        Swal.fire({ icon: 'error', title: 'SYSTEM ERROR' });
+        Swal.fire({ icon: 'error', title: 'System Error' });
       }
     }
   };
 
-  const viewSlip = (path: string) => {
-    if (!path) return Swal.fire({ icon: 'error', title: 'SLIP NOT FOUND' });
-    Swal.fire({
-      imageUrl: `${IMAGE_BASE_URL}${path}`,
-      imageAlt: 'Transfer Slip',
-      background: '#fff',
-      confirmButtonColor: '#10b981',
-      confirmButtonText: 'CLOSE',
-    });
-  };
-
   return (
-    <div className="space-y-8 animate-in fade-in duration-700 pb-10 bg-slate-50/50 p-4 rounded-3xl">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-10 bg-slate-50/50 p-6 rounded-[3rem]">
       
-      {/* --- Header Section --- */}
+      {/* --- Header --- */}
       <div className="flex justify-between items-center px-2">
         <div>
-            <div className="flex items-center gap-2 mb-1">
-                <Landmark size={14} className="text-emerald-600" />
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Financial Control</p>
-            </div>
-            <h1 className="text-4xl font-black italic text-slate-900 uppercase tracking-tighter">
-                Financial <span className="text-emerald-600">Operations</span>
-            </h1>
+          <h1 className="text-4xl font-[1000] italic text-slate-900 uppercase tracking-tighter">
+            Money <span className="text-emerald-600">Ops</span>
+          </h1>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Financial Management System</p>
         </div>
-        <button onClick={() => { mutatePending(); mutateHistory(); }} className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-all shadow-sm group">
-            <RefreshCcw size={20} className="group-active:rotate-180 transition-transform duration-500" />
+        <button onClick={() => { mutatePending(); mutateHistory(); }} className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm hover:text-emerald-600 active:scale-90 transition-all">
+          <RefreshCcw size={20} />
         </button>
       </div>
 
-      {/* --- Finance Stats Cards (White & Clean) --- */}
+      {/* --- Summary --- */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <FinanceCard title="Total Deposit" value={financeData?.total_deposit || 0} icon={<ArrowDownCircle />} variant="emerald" />
         <FinanceCard title="Total Withdraw" value={financeData?.total_withdraw || 0} icon={<ArrowUpCircle />} variant="rose" />
-        <FinanceCard title="Net Profit" value={(financeData?.total_deposit || 0) - (financeData?.total_withdraw || 0)} icon={<TrendingUp />} variant="highlight" />
+        <FinanceCard title="Net Balance" value={(financeData?.total_deposit || 0) - (financeData?.total_withdraw || 0)} icon={<TrendingUp />} variant="highlight" />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-        {/* --- Pending Deposits (White Card) --- */}
+      <div className="grid grid-cols-1 gap-10">
+        
+        {/* --- Pending Withdrawals Table --- */}
         <div className="space-y-4">
-          <SectionHeader title="Awaiting Deposit" count={pendingDeposits.length} color="text-emerald-600" />
-          <div className="bg-white border border-slate-100 rounded-[2rem] overflow-hidden shadow-sm">
+          <SectionHeader title="Pending Withdraw Requests" count={pendingWithdrawals.length} color="text-rose-500" />
+          <div className="bg-white border border-slate-100 rounded-[2.5rem] overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50/50 text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+                  <tr>
+                    <th className="px-8 py-5 text-left">User</th>
+                    <th className="px-8 py-5 text-left">Destination (Bank Info)</th>
+                    <th className="px-8 py-5 text-left">Amount</th>
+                    <th className="px-8 py-5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {pendingWithdrawals.map((tx: any) => (
+                    <tr key={tx.id} className="hover:bg-slate-50/50 transition-colors group">
+                      <td className="px-8 py-6">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400"><UserIcon size={18}/></div>
+                          <div>
+                            <p className="text-slate-900 font-bold tracking-tight">@{tx.User?.username}</p>
+                            <p className="text-[9px] text-slate-400 font-bold">TXID: #{tx.id}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6">
+                        <div className="space-y-1">
+                          <span className="bg-emerald-50 text-emerald-600 text-[9px] font-black px-2 py-0.5 rounded-md uppercase">
+                            {tx.bank_name || 'N/A'}
+                          </span>
+                          <div className="flex items-center gap-2 group/copy">
+                            <p className="text-sm font-black text-slate-800 font-mono tracking-wider">
+                              {tx.account_number || '000-000-000'}
+                            </p>
+                            <button onClick={() => copyToClipboard(tx.account_number)} className="opacity-0 group-hover/copy:opacity-100 p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-emerald-600 transition-all">
+                              <Copy size={14} />
+                            </button>
+                          </div>
+                          <p className="text-[10px] font-bold text-slate-400 italic uppercase">{tx.account_name || 'No Name'}</p>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6">
+                        <span className="text-rose-500 font-[1000] text-2xl italic tracking-tighter">฿{tx.amount.toLocaleString()}</span>
+                      </td>
+                      <td className="px-8 py-6">
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => handleAction(tx, 'reject')} className="p-3 text-slate-300 hover:text-rose-500 transition-colors"><XCircle size={20}/></button>
+                          <button onClick={() => handleAction(tx, 'approve')} className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-slate-200">
+                            Mark Paid
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {pendingWithdrawals.length === 0 && <EmptyState />}
+          </div>
+        </div>
+
+        {/* --- Pending Deposits Table --- */}
+        <div className="space-y-4">
+          <SectionHeader title="Pending Deposits" count={pendingDeposits.length} color="text-emerald-600" />
+          <div className="bg-white border border-slate-100 rounded-[2.5rem] overflow-hidden shadow-sm">
             <table className="w-full">
-              <thead className="bg-slate-50 text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+              <thead className="bg-slate-50/50 text-slate-400 text-[10px] font-bold uppercase tracking-widest">
                 <tr>
-                  <th className="px-6 py-4 text-left">User Identity</th>
-                  <th className="px-6 py-4 text-left">Amount</th>
-                  <th className="px-6 py-4 text-right">Action</th>
+                  <th className="px-8 py-5 text-left">User</th>
+                  <th className="px-8 py-5 text-left">Amount</th>
+                  <th className="px-8 py-5 text-right">Slip & Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {pendingDeposits.map((tx: any) => (
                   <tr key={tx.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4">
-                      <p className="text-slate-900 font-bold tracking-tight">@{tx.User?.username}</p>
-                      <p className="text-[9px] text-slate-400 font-medium">ID: {tx.id}</p>
+                    <td className="px-8 py-6">
+                       <p className="text-slate-900 font-bold tracking-tight">@{tx.User?.username}</p>
+                       <p className="text-[9px] text-slate-400 font-bold">TXID: #{tx.id}</p>
                     </td>
-                    <td className="px-6 py-4 text-emerald-600 font-black text-xl italic tracking-tighter">฿{tx.amount.toLocaleString()}</td>
-                    <td className="px-6 py-4 flex justify-end gap-2">
-                      <button onClick={() => viewSlip(tx.slip_url)} className="p-2.5 bg-slate-100 text-slate-500 rounded-xl hover:bg-emerald-50 hover:text-emerald-600 transition-all"><Eye size={18}/></button>
-                      <button onClick={() => handleAction(tx.id, 'approve', 'deposit', tx.amount)} className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-700 shadow-md shadow-emerald-200 transition-all">Approve</button>
+                    <td className="px-8 py-6">
+                      <span className="text-emerald-600 font-[1000] text-2xl italic tracking-tighter">฿{tx.amount.toLocaleString()}</span>
                     </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* --- Pending Withdrawals (White Card) --- */}
-        <div className="space-y-4">
-          <SectionHeader title="Awaiting Payout" count={pendingWithdrawals.length} color="text-rose-500" />
-          <div className="bg-white border border-slate-100 rounded-[2rem] overflow-hidden shadow-sm">
-             <table className="w-full">
-              <thead className="bg-slate-50 text-slate-400 text-[10px] font-bold uppercase tracking-widest">
-                <tr>
-                  <th className="px-6 py-4 text-left">User Identity</th>
-                  <th className="px-6 py-4 text-left">Amount</th>
-                  <th className="px-6 py-4 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {pendingWithdrawals.map((tx: any) => (
-                  <tr key={tx.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4">
-                      <p className="text-slate-900 font-bold tracking-tight">@{tx.User?.username}</p>
-                      <p className="text-[9px] text-slate-400 font-medium">ID: {tx.id}</p>
-                    </td>
-                    <td className="px-6 py-4 text-rose-500 font-black text-xl italic tracking-tighter">฿{tx.amount.toLocaleString()}</td>
-                    <td className="px-6 py-4 flex justify-end">
-                      <button onClick={() => handleAction(tx.id, 'approve', 'withdraw', tx.amount)} className="px-5 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-rose-500 transition-all">Transfered</button>
+                    <td className="px-8 py-6 flex justify-end items-center gap-4">
+                      <button onClick={() => viewSlip(tx.slip_url)} className="w-12 h-12 rounded-xl border-2 border-slate-100 overflow-hidden hover:border-emerald-500 transition-all flex items-center justify-center bg-slate-50">
+                        {tx.slip_url ? <img src={tx.slip_url.startsWith('http') ? tx.slip_url : `${IMAGE_BASE_URL}${tx.slip_url}`} className="w-full h-full object-cover" /> : <ImageIcon size={16} className="text-slate-300" />}
+                      </button>
+                      <button onClick={() => handleAction(tx, 'approve')} className="px-6 py-3 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100">Approve</button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            {pendingDeposits.length === 0 && <EmptyState />}
           </div>
         </div>
-      </div>
 
-      {/* --- Global History (Full Width White Card) --- */}
-      <div className="space-y-4 pt-4">
-        <div className="flex items-center justify-between px-2">
-            <h3 className="text-xl font-black uppercase italic text-slate-900 tracking-tighter">Transaction <span className="text-emerald-600">History</span></h3>
-            <History className="text-slate-300" size={20} />
-        </div>
-        <div className="bg-white border border-slate-100 rounded-[2.5rem] overflow-hidden shadow-sm">
-          <table className="w-full text-left">
-            <thead className="bg-slate-50 text-slate-400 text-[9px] font-bold uppercase tracking-[0.2em]">
-              <tr>
-                <th className="px-8 py-5">Timestamp</th>
-                <th className="px-8 py-5">Identity</th>
-                <th className="px-8 py-5">Operation</th>
-                <th className="px-8 py-5">Amount</th>
-                <th className="px-8 py-5 text-right">Result</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {history?.map((tx: any) => (
-                <tr key={tx.id} className="hover:bg-slate-50 transition-all group text-slate-600">
-                  <td className="px-8 py-4">
-                    <p className="font-bold text-slate-900">{new Date(tx.created_at).toLocaleTimeString()}</p>
-                    <p className="text-[9px] text-slate-400 font-bold uppercase">{new Date(tx.created_at).toLocaleDateString()}</p>
-                  </td>
-                  <td className="px-8 py-4 font-bold text-slate-500 italic">@{tx.User?.username}</td>
-                  <td className="px-8 py-4">
-                      <span className={`text-[9px] font-black px-3 py-1 rounded-lg uppercase tracking-widest ${tx.type === 'deposit' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'}`}>
-                        {tx.type}
-                      </span>
-                  </td>
-                  <td className={`px-8 py-4 text-xl font-black italic tracking-tighter ${tx.type === 'deposit' ? 'text-emerald-600' : 'text-rose-500'}`}>
-                    {tx.type === 'deposit' ? '+' : '-'} ฿{tx.amount.toLocaleString()}
-                  </td>
-                  <td className="px-8 py-4 text-right">
-                    <span className={`text-[9px] font-bold uppercase px-4 py-1.5 rounded-full border ${
-                      tx.status === 'approved' ? 'border-emerald-200 text-emerald-600 bg-emerald-50' : 
-                      tx.status === 'rejected' ? 'border-rose-200 text-rose-500 bg-rose-50' : 'border-amber-200 text-amber-500 bg-amber-50'
-                    }`}>
-                      {tx.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </div>
     </div>
   );
 }
 
+// --- Sub-Components ---
+
+function EmptyState() {
+  return (
+    <div className="py-16 text-center">
+      <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-dashed border-slate-200">
+        <FileCheck className="text-slate-300" size={24} />
+      </div>
+      <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Everything is processed</p>
+    </div>
+  );
+}
+
 function SectionHeader({ title, count, color }: any) {
-    return (
-        <div className="flex items-center justify-between px-2">
-            <h3 className={`text-sm font-black uppercase ${color} flex items-center gap-2 tracking-wider`}>
-                <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                {title}
-            </h3>
-            <span className="bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-[9px] font-black uppercase">{count} Actions</span>
-        </div>
-    )
+  return (
+    <div className="flex items-center justify-between px-2">
+      <h3 className={`text-sm font-[1000] uppercase ${color} italic tracking-wider flex items-center gap-3`}>
+        <span className="w-2 h-2 rounded-full bg-current animate-pulse" />
+        {title}
+      </h3>
+      <span className="bg-white text-slate-400 px-4 py-1.5 rounded-full text-[9px] font-black border border-slate-100 shadow-sm">{count} Requests</span>
+    </div>
+  );
 }
 
 function FinanceCard({ title, value, icon, variant }: any) {
   const styles: any = {
-    emerald: { bg: "bg-white", border: "border-slate-100", iconBg: "bg-emerald-50", iconCol: "text-emerald-600", textCol: "text-emerald-600" },
-    rose: { bg: "bg-white", border: "border-slate-100", iconBg: "bg-rose-50", iconCol: "text-rose-500", textCol: "text-rose-500" },
-    highlight: { bg: "bg-emerald-600", border: "border-emerald-500", iconBg: "bg-white/20", iconCol: "text-white", textCol: "text-white" }
+    emerald: { bg: "bg-white", textCol: "text-emerald-600", iconBg: "bg-emerald-50", iconCol: "text-emerald-600" },
+    rose: { bg: "bg-white", textCol: "text-rose-500", iconBg: "bg-rose-50", iconCol: "text-rose-500" },
+    highlight: { bg: "bg-emerald-600", textCol: "text-white", iconBg: "bg-white/20", iconCol: "text-white" }
   };
-
   const s = styles[variant];
 
   return (
-    <div className={`p-7 rounded-[2.5rem] border ${s.border} ${s.bg} shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group`}>
-      <div className="flex justify-between items-start mb-4">
-        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${s.iconBg} ${s.iconCol}`}>
-            {cloneElement(icon as React.ReactElement, { size: 22, strokeWidth: 2.5 })}
-        </div>
-        {variant === 'highlight' && <FileCheck size={18} className="text-white/40" />}
+    <div className={`p-8 rounded-[2.5rem] border border-slate-100 ${s.bg} shadow-sm group relative overflow-hidden transition-all duration-500 hover:shadow-xl`}>
+      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-6 ${s.iconBg} ${s.iconCol}`}>
+        {cloneElement(icon as React.ReactElement, { size: 28, strokeWidth: 2.5 })}
       </div>
-      <p className={`${variant === 'highlight' ? 'text-emerald-100' : 'text-slate-400'} text-[10px] font-bold uppercase tracking-widest mb-0.5`}>{title}</p>
-      <h2 className={`text-4xl font-black italic tracking-tighter ${s.textCol}`}>
-        ฿{value.toLocaleString()}
-      </h2>
+      <p className={`${variant === 'highlight' ? 'text-emerald-100' : 'text-slate-400'} text-[10px] font-black uppercase tracking-widest mb-1`}>{title}</p>
+      <h2 className={`text-5xl font-[1000] italic tracking-tighter ${s.textCol}`}>฿{value.toLocaleString()}</h2>
     </div>
   );
 }

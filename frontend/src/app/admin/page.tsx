@@ -103,13 +103,13 @@ export default function AdminPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
           <ActionBox href="/admin/finance" title="Transactions" sub="Finance Logs" icon={<Wallet />} />
           <ActionBox href="/admin/users" title="Users Control" sub="Member List" icon={<ShieldCheck />} />
-          <ActionBox href="/admin/settlement" title="Settlement" sub="Manual Payout" icon={<Trophy />} />
-          <ActionBox href="/admin/bets" title="Betting Logs" sub="Audit Tickets" icon={<Activity />} />
+        {/* <ActionBox href="/admin/settlement" title="Settlement" sub="Manual Payout" icon={<Trophy />} />
+          {/* <ActionBox href="/admin/bets" title="Betting Logs" sub="Audit Tickets" icon={<Activity />} /> */}
           
           <ActionBox href="/admin/bank-settings" title="Bank API" sub="Gateway Config" icon={<Database />} />
           <ActionBox href="/admin/finance" title="Withdraw" sub="Cash Out" icon={<ArrowUpRight />} />
-          <ActionBox href="/admin/settings" title="Settings" sub="System Info" icon={<Settings />} />
-          <ActionBox href="/admin" title="Live Stream" sub="Match Feeds" icon={<Zap />} />
+          {/* <ActionBox href="/admin/settings" title="Settings" sub="System Info" icon={<Settings />} /> */}
+         {/* <ActionBox href="/admin" title="Live Stream" sub="Match Feeds" icon={<Zap />} /> */}
         </div>
       </div>
 

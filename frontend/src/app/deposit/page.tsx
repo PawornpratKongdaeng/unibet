@@ -65,8 +65,11 @@ export default function DepositPage() {
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
       
       const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('slips')
-        .upload(fileName, file);
+  .from('slips')
+  .upload(fileName, file, {
+    contentType: file.type, // ✅ ตรวจสอบว่า file ตัวนี้มีค่าและมี type
+    upsert: false
+  });
 
       if (uploadError) throw new Error("Upload failed");
 
@@ -74,14 +77,14 @@ export default function DepositPage() {
         .from('slips')
         .getPublicUrl(fileName);
 
-      const res = await apiFetch("/deposit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount: Number(amount),
-          slipUrl: publicUrl,
-        }),
-      });
+      const res = await apiFetch("/user/deposit", {  // ✅ เติม /user เข้าไป
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    amount: Number(amount),
+    slipUrl: publicUrl,
+  }),
+});
 
       if (!res.ok) throw new Error("API failed");
 

@@ -39,7 +39,7 @@ func SetupRoutes(app *fiber.App) {
 		member.Get("/profile", handlers.GetProfile)
 		member.Post("/deposit", handlers.CreateDeposit)
 		member.Post("/withdraw", handlers.CreateWithdraw)
-		member.Get("/bet/history", handlers.GetBetHistory)
+		member.Get("/bet-history", handlers.GetBetHistory)
 		member.Post("/bet", handlers.PlaceBet)
 	}
 

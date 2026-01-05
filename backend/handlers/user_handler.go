@@ -128,3 +128,33 @@ func GetUserProfile(c *fiber.Ctx) error {
 	// ✅ ส่ง JSON กลับไป (GORM จะใช้ json tags จาก struct models.User)
 	return c.JSON(user)
 }
+func GetBetHistory(c *fiber.Ctx) error {
+	// 1. ดึง userID จาก Middleware
+	var userID uint
+	switch v := c.Locals("user_id").(type) {
+	case float64:
+		userID = uint(v)
+	case uint:
+		userID = v
+	default:
+		return c.Status(401).JSON(fiber.Map{"error": "กรุณาเข้าสู่ระบบใหม่"})
+	}
+
+	// 2. เตรียมตัวแปรรับข้อมูล
+	var singleBets []models.BetSlip
+	var parlayBets []models.ParlayTicket
+
+	// ✅ เพิ่ม Preload("Match") เพื่อดึงข้อมูลการแข่งขันมาด้วย
+	database.DB.Preload("Match").Where("user_id = ?", userID).Order("created_at desc").Find(&singleBets)
+
+	// ✅ เพิ่ม Preload("Items") สำหรับบอลชุด
+	database.DB.Preload("Items").Where("user_id = ?", userID).Order("created_at desc").Find(&parlayBets)
+
+	return c.JSON(fiber.Map{
+		"status": "success",
+		"data": fiber.Map{
+			"single": singleBets,
+			"parlay": parlayBets,
+		},
+	})
+}

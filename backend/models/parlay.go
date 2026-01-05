@@ -17,8 +17,10 @@ type ParlayItem struct {
 	ID       uint    `gorm:"primaryKey"`
 	TicketID uint    `json:"ticket_id"`
 	MatchID  string  `json:"match_id"`
-	Hdp      float64 `json:"hdp"` // เปลี่ยนจาก HDP เป็น Hdp ให้เหมือนกัน
+	HomeTeam string  `json:"home_team"` // เพิ่มใหม่
+	AwayTeam string  `json:"away_team"` // เพิ่มใหม่
+	Hdp      float64 `json:"hdp"`
 	Pick     string  `json:"pick"`
 	Odds     float64 `json:"odds"`
-	Status   string  `json:"status"` // pending, win, win_half, draw, lose_half, loss
+	Status   string  `json:"status"`
 }

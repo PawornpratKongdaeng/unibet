@@ -4,11 +4,15 @@ import useSWR from "swr";
 import Header from "@/components/Header";
 import { apiFetch } from "@/lib/api";
 import Swal from "sweetalert2";
+import { Landmark, User, CreditCard, ChevronDown } from "lucide-react";
 
 const fetcher = (url: string) => apiFetch(url).then(res => res.json());
 
 export default function WithdrawPage() {
   const [amount, setAmount] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [accountName, setAccountName] = useState("");
   const [mounted, setMounted] = useState(false);
   
   const { data: user, mutate } = useSWR("/user/profile", fetcher);
@@ -17,13 +21,17 @@ export default function WithdrawPage() {
     setMounted(true);
   }, []);
 
+  const myanmarBanks = [
+    "KBZ Bank", "CB Bank", "AYA Bank", "Yoma Bank", 
+    "KBZPay", "Wave Money", "UAB Bank", "MAB Bank"
+  ];
+
   const formattedBalance = user?.balance 
     ? user.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     : "0.00";
 
-  const quickAmounts = [100, 500, 1000, 5000];
+  const quickAmounts = [1000, 5000, 10000, 50000]; // ปรับตัวเลขให้เหมาะกับค่าเงิน
 
-  // ปรับแต่งสีของ SweetAlert ให้เข้ากับธีมเขียว
   const swalConfig = {
     background: '#013323',
     color: '#fff',
@@ -34,88 +42,72 @@ export default function WithdrawPage() {
     e.preventDefault();
     const withdrawAmount = Number(amount);
 
-    if (withdrawAmount < 100) {
-      return Swal.fire({ 
-        icon: 'error', 
-        title: 'ถอนขั้นต่ำ ฿100', 
-        ...swalConfig,
-        confirmButtonColor: '#ef4444' // สีแดงสำหรับ error
-      });
+    if (!bankName || !accountNumber || !accountName) {
+      return Swal.fire({ icon: 'error', title: 'ข้อมูลไม่ครบถ้วน', text: 'กรุณากรอกข้อมูลธนาคารให้ครบทุกช่อง', ...swalConfig });
     }
 
-    if (withdrawAmount > (user?.balance || 0)) {
-      return Swal.fire({ 
-        icon: 'error', 
-        title: 'ยอดเงินไม่เพียงพอ', 
-        ...swalConfig,
-        confirmButtonColor: '#ef4444' 
-      });
+    if (withdrawAmount < 100) {
+      return Swal.fire({ icon: 'error', title: 'ถอนขั้นต่ำ ฿100', ...swalConfig });
     }
 
     const result = await Swal.fire({
-      title: 'ยืนยันการถอนเงิน?',
-      text: `ยอดถอน ฿${withdrawAmount.toLocaleString()} จะถูกโอนเข้าบัญชีคุณ`,
-      icon: 'warning',
+      title: 'CONFIRM WITHDRAWAL',
+      html: `
+        <div class="text-left text-sm space-y-2 bg-black/20 p-4 rounded-2xl border border-white/5 mt-4">
+          <p><span class="text-emerald-400 font-bold">Bank:</span> ${bankName}</p>
+          <p><span class="text-emerald-400 font-bold">Account:</span> ${accountNumber}</p>
+          <p><span class="text-emerald-400 font-bold">Name:</span> ${accountName}</p>
+          <p class="text-xl mt-4 text-center font-black">Total: ฿${withdrawAmount.toLocaleString()}</p>
+        </div>
+      `,
       showCancelButton: true,
       confirmButtonText: 'CONFIRM',
-      cancelButtonText: 'CANCEL',
       ...swalConfig
     });
 
     if (result.isConfirmed) {
-      Swal.fire({ 
-        title: 'Processing...', 
-        didOpen: () => Swal.showLoading(), 
-        ...swalConfig 
-      });
+      Swal.fire({ title: 'Processing...', didOpen: () => Swal.showLoading(), ...swalConfig });
 
       try {
-        const res = await apiFetch("/transaction/withdraw", {
+        const res = await apiFetch("/user/withdraw", {
           method: "POST",
-          body: JSON.stringify({ amount: withdrawAmount }),
+          body: JSON.stringify({ 
+            amount: withdrawAmount,
+            bank_name: bankName,
+            account_number: accountNumber,
+            account_name: accountName
+          }),
         });
 
         if (!res.ok) throw new Error();
 
-        Swal.fire({ 
-          icon: 'success', 
-          title: 'SUCCESS!', 
-          text: 'ส่งคำขอถอนเงินสำเร็จ', 
-          ...swalConfig,
-          timer: 2000, 
-          showConfirmButton: false 
-        });
-        setAmount("");
+        Swal.fire({ icon: 'success', title: 'SUCCESS!', text: 'ส่งคำขอถอนเงินสำเร็จ', ...swalConfig, timer: 2000, showConfirmButton: false });
+        setAmount(""); setAccountNumber(""); setAccountName("");
         mutate(); 
       } catch (err) {
-        Swal.fire({ 
-          icon: 'error', 
-          title: 'Error', 
-          text: 'เกิดข้อผิดพลาด กรุณาลองใหม่', 
-          ...swalConfig 
-        });
+        Swal.fire({ icon: 'error', title: 'Error', text: 'เกิดข้อผิดพลาด กรุณาลองใหม่', ...swalConfig });
       }
     }
   };
 
   return (
-    // 1. เปลี่ยนพื้นหลังหลักเป็นสีเขียวเข้ม
     <main className="min-h-screen bg-[#013323] text-white pb-20 font-sans overflow-x-hidden">
       <Header />
       
       <div className="max-w-md mx-auto px-6 pt-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
         <div className="mb-8">
-          <h1 className="text-4xl font-black italic uppercase tracking-tighter">
-            Withdraw <span className="text-[#00b359]">Credit</span>
+          <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">
+            Withdraw <span className="text-[#00b359]">Funds</span>
           </h1>
+          <p className="text-[10px] font-bold text-emerald-400/30 uppercase tracking-[0.3em] mt-2">Myanmar Local Bank Support</p>
         </div>
 
-        {/* 1. ยอดเงินคงเหลือ - ใช้โทนเดียวกับ Dashboard Balance Card */}
-        <div className="relative overflow-hidden bg-[#022c1e] border border-[#044630] p-8 rounded-[2.5rem] mb-6 shadow-2xl">
-          <div className="absolute top-0 right-0 p-6 opacity-10">
-              <span className="text-5xl">💰</span>
+        {/* Available Balance Card */}
+        <div className="relative overflow-hidden bg-[#022c1e] border border-[#044630] p-8 rounded-[2.5rem] mb-10 shadow-2xl group">
+          <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-20 transition-opacity">
+              <Landmark size={80} />
           </div>
-          <p className="text-emerald-400/50 text-[10px] font-black uppercase tracking-widest mb-1">Available Balance</p>
+          <p className="text-emerald-400/50 text-[10px] font-black uppercase tracking-widest mb-1">Your Balance</p>
           <div className="flex items-baseline gap-2">
             <span className="text-[#00b359] text-2xl font-black">฿</span>
             <span className="text-5xl font-black tracking-tighter text-white">
@@ -124,34 +116,59 @@ export default function WithdrawPage() {
           </div>
         </div>
 
-        {/* 2. ข้อมูลธนาคาร - ใช้ Gradient แบบ Hero Banner */}
-        <div className="bg-gradient-to-br from-[#034a31] to-[#046c48] border border-white/10 p-6 rounded-[2rem] mb-8 relative overflow-hidden shadow-xl">
-          <div className="flex justify-between items-start mb-6">
-            <div className="bg-white/10 px-3 py-1 rounded-full border border-white/10 text-[9px] font-black uppercase text-emerald-100">Target Account</div>
-            <div className="w-8 h-8 bg-white/10 rounded-full flex items-center justify-center">
-                <span className="text-xs">💳</span>
+        <form onSubmit={handleWithdraw} className="space-y-8">
+          
+          {/* Section: Bank Details */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 px-2">
+               <div className="h-px flex-1 bg-[#044630]"></div>
+               <span className="text-[9px] font-black text-emerald-400/40 uppercase tracking-[0.2em]">Bank Information</span>
+               <div className="h-px flex-1 bg-[#044630]"></div>
             </div>
-          </div>
-          <p className="text-2xl font-mono font-black tracking-widest text-white mb-1">
-            {user?.bank_account || '000-0-00000-0'}
-          </p>
-          <div className="flex justify-between items-end">
-            <div>
-              <p className="text-[10px] text-emerald-200/50 font-bold uppercase">Account Holder</p>
-              <p className="font-black text-sm uppercase text-white">{user?.first_name} {user?.last_name}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] text-emerald-200/50 font-bold uppercase">Bank</p>
-              <p className="font-black text-sm text-[#00b359] bg-white px-2 py-0.5 rounded shadow-sm">
-                {user?.bank_name || 'K-BANK'}
-              </p>
-            </div>
-          </div>
-        </div>
 
-        {/* 3. ฟอร์มถอนเงิน */}
-        <form onSubmit={handleWithdraw} className="space-y-6">
-          <div className="space-y-3">
+            {/* Select Bank */}
+            <div className="relative">
+              <select 
+                value={bankName}
+                onChange={(e) => setBankName(e.target.value)}
+                className="w-full bg-[#022c1e] border border-[#044630] p-5 rounded-2xl text-sm font-bold outline-none focus:border-[#00b359] appearance-none transition-all"
+                required
+              >
+                <option value="" disabled>Select Myanmar Bank / Wallet</option>
+                {myanmarBanks.map(bank => <option key={bank} value={bank}>{bank}</option>)}
+              </select>
+              <ChevronDown className="absolute right-5 top-1/2 -translate-y-1/2 text-emerald-400/50 pointer-events-none" size={18} />
+            </div>
+
+            {/* Account Number */}
+            <div className="relative group">
+              <CreditCard className="absolute left-5 top-1/2 -translate-y-1/2 text-emerald-900 group-focus-within:text-[#00b359] transition-colors" size={18} />
+              <input 
+                type="text" 
+                placeholder="Account Number / Wallet ID"
+                value={accountNumber}
+                onChange={(e) => setAccountNumber(e.target.value)}
+                className="w-full bg-[#022c1e] border border-[#044630] p-5 pl-14 rounded-2xl text-sm font-bold outline-none focus:border-[#00b359] transition-all"
+                required
+              />
+            </div>
+
+            {/* Account Name */}
+            <div className="relative group">
+              <User className="absolute left-5 top-1/2 -translate-y-1/2 text-emerald-900 group-focus-within:text-[#00b359] transition-colors" size={18} />
+              <input 
+                type="text" 
+                placeholder="Full Account Name"
+                value={accountName}
+                onChange={(e) => setAccountName(e.target.value)}
+                className="w-full bg-[#022c1e] border border-[#044630] p-5 pl-14 rounded-2xl text-sm font-bold outline-none focus:border-[#00b359] transition-all"
+                required
+              />
+            </div>
+          </div>
+
+          {/* Section: Amount */}
+          <div className="space-y-4">
             <div className="flex justify-between items-center px-2">
               <label className="text-[10px] font-black text-emerald-400/50 uppercase tracking-widest">Withdraw Amount</label>
               <button 
@@ -170,7 +187,7 @@ export default function WithdrawPage() {
                 placeholder="0.00"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="w-full bg-[#022c1e] border border-[#044630] p-6 pl-12 rounded-[1.5rem] text-3xl font-black outline-none focus:border-[#00b359] text-white transition-all placeholder:text-emerald-900"
+                className="w-full bg-[#022c1e] border border-[#044630] p-6 pl-12 rounded-[1.5rem] text-3xl font-black outline-none focus:border-[#00b359] transition-all"
                 required
               />
             </div>
@@ -181,7 +198,7 @@ export default function WithdrawPage() {
                   key={val}
                   type="button"
                   onClick={() => setAmount(val.toString())}
-                  className="py-3 bg-[#022c1e] border border-[#044630] rounded-xl text-[11px] font-black text-emerald-100 hover:bg-[#044630] hover:text-[#00b359] transition-all"
+                  className="py-3 bg-[#022c1e] border border-[#044630] rounded-xl text-[10px] font-black text-emerald-100 hover:bg-[#044630] hover:text-[#00b359] transition-all shadow-sm"
                 >
                   +{val.toLocaleString()}
                 </button>
@@ -189,10 +206,9 @@ export default function WithdrawPage() {
             </div>
           </div>
 
-          {/* ปุ่มกดยืนยัน - ใช้สไตล์เดียวกับปุ่ม Navigation Grid (ขาว-เขียว) */}
-          <button className="group relative w-full bg-white text-[#013323] font-black py-6 rounded-[1.5rem] overflow-hidden transition-all hover:scale-[1.02] active:scale-95 shadow-lg shadow-black/20">
+          <button className="group relative w-full bg-white text-[#013323] font-[1000] py-6 rounded-[2rem] overflow-hidden transition-all hover:scale-[1.02] active:scale-95 shadow-2xl shadow-[#00b359]/10">
             <div className="absolute inset-0 bg-[#00b359] translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-            <span className="relative group-hover:text-white transition-colors duration-300 uppercase italic tracking-widest">
+            <span className="relative group-hover:text-white transition-colors duration-300 uppercase italic tracking-[0.2em] text-xs">
               Confirm Withdrawal
             </span>
           </button>
