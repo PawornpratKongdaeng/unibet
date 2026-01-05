@@ -18,7 +18,10 @@ func main() {
 	database.InitDB()
 
 	// 2. Setup Fiber App
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		// ✅ เพิ่มลิมิตเป็น 10MB ให้ตรงกับ Nginx
+		BodyLimit: 10 * 1024 * 1024,
+	})
 
 	// 3. Middleware: CORS (แก้ไขตรงนี้ ✅)
 	app.Use(cors.New(cors.Config{
