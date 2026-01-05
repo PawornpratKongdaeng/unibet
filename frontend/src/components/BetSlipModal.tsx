@@ -107,7 +107,7 @@ export default function BetSlipModal({ bets, isOpen, setIsOpen, onRemove, onClea
         })
       };
 
-      const response = await fetch("violent-miguela-thunibet-bbdc4df6.koyeb.app/api/v3/user/bet", {
+      const response = await fetch("/api/v3/user/bet", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
