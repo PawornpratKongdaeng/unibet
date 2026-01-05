@@ -2,13 +2,9 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
-// ไอคอนตัวอย่าง (หากคุณมีชุดไอคอนของคุณเอง ให้เปลี่ยนส่วนนี้)
-import { Trophy, Layers, Ticket, History, Download, Upload, Settings, PlayCircle, LogOut, Server, User } from "lucide-react";
+import { Trophy, Layers, Ticket, History, Download, Upload, Settings, PlayCircle, LogOut, Server, User, RefreshCcw } from "lucide-react";
 
 import Header from "../components/Header";
-// EndpointSelector และ MatchCard ไม่ได้ใช้ในหน้านี้ตามรูปภาพ จึง comment ไว้ก่อน
-// import EndpointSelector from "../components/EndpointSelector";
-// import MatchCard from "../components/MatchCard";
 import BetSlipModal from "../components/BetSlipModal";
 import { showToast } from "@/lib/sweetAlert";
 import { apiFetch } from "@/lib/api";
@@ -27,19 +23,16 @@ const fetcher = async (url: string) => {
 
 export default function Home() {
   const [selectedBet, setSelectedBet] = useState<any>(null);
-  // state endpoint อาจไม่ได้ใช้ในหน้านี้แล้ว แต่เก็บไว้ไม่เสียหายหากมีการย้ายหน้า
-  const [endpoint, setEndpoint] = useState<string>("live");
   const router = useRouter();
-
-  // ดึง balance และ userData (ถ้ามี) จาก context
+  
+  // Wallet Context
   const walletContext = useWallet() as any;
   const { balance, refreshBalance } = walletContext;
-  // Mockup ชื่อผู้ใช้ เนื่องจากใน context อาจไม่มี (ปรับแก้ตามจริง)
+  
   const usernameMock = "THUNIBET28290";
-
   const Modal = BetSlipModal as any;
 
-
+  // Configuration SWR
   const { data: configData } = useSWR("/settings", fetcher, {
     refreshInterval: 30000,
     shouldRetryOnError: false
@@ -52,13 +45,7 @@ export default function Home() {
     contact_line: "@admin"
   };
 
-  // การดึงข้อมูล Match ยังคงทำงานอยู่เบื้องหลัง (ถ้าไม่ต้องการให้ดึงในหน้านี้ ควรย้ายไป page อื่น)
-  const { data, isLoading } = useSWR(
-    `/match/${endpoint}`,
-    fetcher,
-    { refreshInterval: 5000 }
-  );
-
+  // Auth Protection
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
     if (!token) {
@@ -66,9 +53,7 @@ export default function Home() {
     }
   }, []);
 
-  // --- Handlers (เก็บไว้ใช้ร่วมกับ BetSlipModal) ---
-  // ฟังก์ชัน handleBetClick ไม่ได้ถูกเรียกใช้จากปุ่มในหน้า Dashboard นี้โดยตรง
-  // แต่เก็บไว้เผื่อกรณีมี logic เรียก Modal
+  // --- Betting Logic ---
   const handleConfirmBet = async (amount: number) => {
     if (!selectedBet) return;
     if (amount < settings.min_bet) {
@@ -112,163 +97,117 @@ export default function Home() {
     }
   };
 
-  // ข้อมูลสำหรับปุ่ม Navigation Grid
   const navItems = [
-    { icon: Trophy, label: "SPORTS BETTING", subLabel: "MATCH LIST", link: "/matchone" }, // ตัวอย่างลิงก์ไปหน้าเดิมพัน
-    { icon: Layers, label: "MIXED PARLAY", subLabel: "MULTI BET", link: "/matches" },
-    { icon: Ticket, label: "MY VOUCHERS", subLabel: "BETTING HISTORY", link: "/history" },
-    { icon: History, label: "TRANSACTIONS", subLabel: "FINANCE LOGS", link: "/transactions" },
+    { icon: Trophy, label: "SPORTS", subLabel: "MATCH LIST", link: "/matchone" },
+    { icon: Layers, label: "PARLAY", subLabel: "MULTI BET", link: "/matches" },
+    { icon: Ticket, label: "VOUCHERS", subLabel: "HISTORY", link: "/history" },
+    { icon: History, label: "FINANCE", subLabel: "LOGS", link: "/transactions" },
     { icon: Download, label: "DEPOSIT", subLabel: "ADD FUNDS", link: "/deposit" },
     { icon: Upload, label: "WITHDRAW", subLabel: "CASH OUT", link: "/withdraw" },
-    { icon: Settings, label: "SETTINGS", subLabel: "PROFILE INFO", link: "/settings" },
-    { icon: PlayCircle, label: "LIVE STREAM", subLabel: "WATCH NOW", link: "/live" },
+    { icon: Settings, label: "SETTINGS", subLabel: "PROFILE", link: "/settings" },
+    { icon: PlayCircle, label: "LIVE", subLabel: "WATCH NOW", link: "/live" },
   ];
 
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    window.location.replace("/login");
+  };
+
   return (
-    // 1. เปลี่ยน Background หลักเป็นสีเขียวเข้มตามรูป
-    <main className="min-h-screen bg-[#013323] text-white pb-24 sm:pb-12 font-sans overflow-x-hidden font-bold">
-      {/* Header ควรปรับให้รองรับ Dark Theme */}
+    <main className="min-h-screen bg-[#013323] text-white pb-12 font-sans overflow-x-hidden">
       <Header />
 
-      <div className="max-w-4xl mx-auto px-4 pt-6">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-4 md:pt-10">
 
-        {/* 2. Hero Banner Section */}
-        <div className="rounded-3xl bg-gradient-to-b from-[#034a31] to-[#046c48] p-6 mb-6 shadow-lg relative overflow-hidden min-h-[160px] flex items-center">
-          {/* Background Pattern (Optional - ใส่เพื่อให้ดูมีมิติขึ้น) */}
-          <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white to-transparent pointer-events-none"></div>
-          <div>
-            <h1 className="text-3xl sm:text-4xl font-extrabold italic tracking-wide leading-tight">
-              PREMIUM
-              <br />
-              SPORT ENGINE
+        {/* 1. Hero Banner */}
+        <div className="rounded-[2.5rem] bg-gradient-to-br from-[#034a31] via-[#046c48] to-[#013323] p-8 md:p-14 mb-8 shadow-2xl relative overflow-hidden flex items-center border border-white/10">
+          <div className="absolute top-[-20%] right-[-10%] w-72 h-72 bg-emerald-400/20 rounded-full blur-[80px]"></div>
+          <div className="relative z-10">
+            <h1 className="text-4xl md:text-6xl font-black italic tracking-tighter leading-[0.85]">
+              PREMIUM<br />
+              <span className="text-emerald-400">SPORT ENGINE</span>
             </h1>
+            <p className="mt-4 text-[10px] md:text-xs font-black tracking-[0.4em] opacity-40 uppercase">Thunibet Professional System</p>
           </div>
         </div>
 
-        {/* 3. Profile & Balance Section */}
-        <div className="bg-[#022c1e] rounded-2xl p-4 mb-6 flex justify-between items-center shadow-md border border-[#044630]">
-          <div className="flex items-center space-x-4">
-            {/* User Avatar Icon */}
-            <div className="w-12 h-12 bg-[#00b359] rounded-full flex items-center justify-center border-2 border-[#00b359]/30">
-              <User className="w-6 h-6 text-[#013323]" />
+        {/* 2. Profile & Balance */}
+        <div className="bg-[#022c1e] rounded-3xl p-5 md:p-8 mb-8 flex flex-col sm:flex-row gap-6 justify-between items-center shadow-xl border border-[#044630]">
+          <div className="flex items-center space-x-4 w-full sm:w-auto">
+            <div className="w-14 h-14 md:w-16 md:h-16 bg-emerald-500 rounded-2xl rotate-3 flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
+              <User className="w-8 h-8 text-[#013323] -rotate-3" />
             </div>
-            <div>
-              <h2 className="text-xl font-extrabold tracking-wider">{usernameMock}</h2>
-               {/* Mockup เบอร์โทร หรือ ID ถ้ามี */}
-              <p className="text-[10px] text-emerald-400/70 tracking-widest">ID: 885-948-9183</p>
+            <div className="truncate">
+              <h2 className="text-xl md:text-2xl font-black tracking-tight truncate">{usernameMock}</h2>
+              <p className="text-[10px] md:text-xs text-emerald-400/50 font-bold tracking-widest mt-0.5">ID: 885-948-9183</p>
             </div>
           </div>
-          <div className="text-right">
-             <p className="text-[10px] text-emerald-400/70 uppercase tracking-widest mb-1">Available Credit</p>
-             {/* แสดง Balance ที่ดึงมาจาก Context */}
-            <div className="text-3xl font-extrabold text-[#00b359] flex items-baseline justify-end tracking-tighter">
-              <span className="text-xl mr-1">฿</span>
+          
+          <div className="text-center sm:text-right w-full sm:w-auto border-t sm:border-t-0 border-[#044630] pt-4 sm:pt-0">
+            <p className="text-[10px] text-emerald-400/60 uppercase font-black tracking-[0.2em] mb-1">Available Credit</p>
+            <div className="text-3xl md:text-5xl font-black text-emerald-400 flex items-baseline justify-center sm:justify-end tracking-tighter tabular-nums">
+              <span className="text-xl md:text-2xl mr-2 font-bold opacity-80">฿</span>
               {balance ? balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0.00"}
+              <button 
+                onClick={() => refreshBalance()} 
+                className="ml-3 p-2 hover:bg-emerald-500/10 rounded-full transition-all active:rotate-180 duration-500"
+              >
+                 <RefreshCcw size={18} className="text-emerald-400/40" />
+              </button>
             </div>
           </div>
         </div>
 
-        {/* 4. Navigation Grid Section (ปุ่มขาว 8 ปุ่ม) */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        {/* 3. Navigation Grid */}
+        <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 md:gap-6 mb-10">
           {navItems.map((item, index) => (
             <button
               key={index}
-              onClick={() => router.push(item.link)} // นำทางไปยังหน้าอื่นๆ
-              className="bg-white rounded-2xl py-6 px-2 flex flex-col items-center justify-center shadow-md transition-transform hover:scale-105 active:scale-95 group"
+              onClick={() => router.push(item.link)}
+              className="bg-white rounded-[2rem] py-6 md:py-10 px-4 flex flex-col items-center justify-center shadow-lg transition-all hover:-translate-y-2 active:scale-95 group border-b-4 border-slate-200"
             >
-              {/* Icon Container */}
-              <div className="mb-3 p-2 rounded-full border-2 border-[#00b359]/20 group-hover:border-[#00b359] transition-colors">
-                 {/* ใช้สีเขียวสดสำหรับไอคอน */}
-                <item.icon className="w-6 h-6 text-[#00b359]" strokeWidth={2.5} />
+              <div className="mb-4 p-4 rounded-2xl bg-emerald-50 text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300">
+                <item.icon className="w-7 h-7 md:w-8 md:h-8" strokeWidth={2.5} />
               </div>
-              {/* Main Label */}
-              <span className="text-[#013323] font-extrabold text-xs sm:text-sm tracking-wider mb-1">
+              <span className="text-[#013323] font-black text-xs md:text-sm tracking-tight mb-1">
                 {item.label}
               </span>
-               {/* Sub Label */}
-              <span className="text-zinc-400 text-[9px] font-bold tracking-widest uppercase">
+              <span className="text-slate-400 text-[9px] md:text-[10px] font-black tracking-widest uppercase opacity-80">
                 {item.subLabel}
               </span>
             </button>
           ))}
         </div>
 
-        {/* 5. Footer Actions */}
-        <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-8">
-            {/* Sign Out Button (Red) */}
-            <button className="w-full md:w-auto flex-1 bg-[#3b1215] border border-rose-900/50 text-rose-500 rounded-xl py-3 px-6 flex items-center justify-center space-x-2 font-extrabold tracking-widest text-xs hover:bg-[#4a171b] transition-colors">
-               <LogOut className="w-4 h-4 transform rotate-180" />
-               <span>SIGN OUT SYSTEM</span>
+        {/* 4. Footer Actions */}
+        <div className="flex flex-col sm:flex-row gap-4 items-center mb-12">
+            <button 
+              onClick={handleLogout}
+              className="w-full sm:flex-1 bg-rose-950/20 border border-rose-900/40 text-rose-500 rounded-[1.5rem] py-5 px-6 flex items-center justify-center gap-3 font-black tracking-[0.1em] text-[11px] md:text-xs hover:bg-rose-900/30 transition-all uppercase active:scale-[0.98]"
+            >
+               <LogOut size={18} />
+               <span>Sign Out System</span>
             </button>
 
-            {/* Server Status (Green) */}
-             <div className="w-full md:w-auto flex-1 bg-[#022c1e] border border-[#044630] text-[#00b359] rounded-xl py-3 px-6 flex items-center justify-center space-x-2 font-extrabold tracking-widest text-[10px] uppercase">
-               <Server className="w-4 h-4" />
-               <span>Server Status: Operational</span>
+             <div className="w-full sm:flex-1 bg-emerald-950/20 border border-emerald-900/40 text-emerald-500 rounded-[1.5rem] py-5 px-6 flex items-center justify-center gap-3 font-black tracking-[0.1em] text-[10px] md:text-[11px] uppercase">
+               <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+               </span>
+               <span className="opacity-80">Server: Operational</span>
             </div>
         </div>
-
-
-        {/* --- UI เดิมที่ถูกซ่อนไว้ (ตามรูปภาพ Dashboard ไม่ได้แสดงส่วนนี้) --- */}
-        {/*
-        <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-emerald-100 shadow-sm">
-          <EndpointSelector
-            currentEndpoint={endpoint}
-            setEndpoint={(val: string) => { setEndpoint(val); setSelectedBet(null); }}
-          />
-        </div>
-
-        {settings.maintenance_mode && (
-          <div className="bg-rose-500 text-white text-[10px] font-bold py-2 text-center uppercase tracking-widest">
-            ⚠️ System Maintenance: Betting is currently disabled
-          </div>
-        )}
-
-        <div className="bg-emerald-50 text-emerald-700 py-3 text-center text-[9px] font-bold uppercase tracking-[0.2em] border-b border-emerald-100">
-          Network Status: <span className="text-emerald-600 underline">Active</span>
-          <span className="text-emerald-200 mx-2">|</span>
-          Endpoint: <span className="text-emerald-800">{endpoint.toUpperCase()}</span>
-        </div>
-
-        {isLoading && (
-          <div className="py-20 text-center">
-             <div className="inline-block w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-             <p className="text-emerald-700 text-[10px] font-bold tracking-widest uppercase">Fetching Data...</p>
-          </div>
-        )}
-
-        {!isLoading && matches.length === 0 ? (
-          <div className="py-20 text-center text-slate-400 text-xs uppercase tracking-widest">
-            No active matches found in {endpoint}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 px-4 mt-6">
-            {matches.map((match: any, i: number) => (
-              <div key={match.id || i} className="w-full drop-shadow-sm">
-                <MatchCard
-                  match={match}
-                  isResultsPage={endpoint === "results"}
-                  isLive={endpoint === "live"}
-                  isMaintenance={settings.maintenance_mode}
-                  onBetClick={handleBetClick}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-        */}
       </div>
 
-      {/* Bet Slip Modal ยังคงเก็บไว้ เผื่อมีการเรียกใช้ */}
       {selectedBet && (
-  <Modal
-    selectedBet={selectedBet}
-    minBet={Number(settings.min_bet)}
-    maxBet={Number(settings.max_bet)}
-    onClose={() => setSelectedBet(null)}
-    onConfirm={handleConfirmBet}
-  />
-)}
+        <Modal
+          selectedBet={selectedBet}
+          minBet={Number(settings.min_bet)}
+          maxBet={Number(settings.max_bet)}
+          onClose={() => setSelectedBet(null)}
+          onConfirm={handleConfirmBet}
+        />
+      )}
     </main>
   );
 }

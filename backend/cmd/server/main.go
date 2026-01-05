@@ -22,10 +22,10 @@ func main() {
 
 	// 3. Middleware: CORS (แก้ไขตรงนี้ ✅)
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "*",
+		AllowOrigins:     "https://thunibet.com",
 		AllowCredentials: false, // เปลี่ยนเป็น false
 	}))
-	app.Static("/uploads", "./uploads")
+
 	// 4. Setup Routes
 	routes.SetupRoutes(app)
 
