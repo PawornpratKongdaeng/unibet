@@ -12,7 +12,7 @@ services:
     volumes:
       # เก็บข้อมูลไว้ในเครื่องเรา (ข้อมูลจะไม่หายเวลาปิด Docker)
       - mysql_data:/var/lib/mysql
-      # (ไม่บังคับ) ถ้าคุณมีไฟล์ .sql อยากให้มันรันตอนเริ่มครั้งแรก
+      - ./backend/uploads:/app/uploads
       # - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
 
 volumes:
