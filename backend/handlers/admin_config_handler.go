@@ -124,16 +124,23 @@ func ApproveTransaction(c *fiber.Ctx) error {
 			return c.Status(400).JSON(fiber.Map{"error": "ดำเนินการไปแล้ว"})
 		}
 
-		// ถ้าเป็นเงินฝาก ให้เพิ่มเครดิต
+		// กรณีเป็น "เงินฝาก": ต้องบวกเงินเข้าเครดิตลูกค้า
 		if transaction.Type == "deposit" {
-			tx.Model(&models.User{}).Where("id = ?", transaction.UserID).
-				Update("credit", gorm.Expr("credit + ?", transaction.Amount))
+			if err := tx.Model(&models.User{}).Where("id = ?", transaction.UserID).
+				Update("credit", gorm.Expr("credit + ?", transaction.Amount)).Error; err != nil {
+				return err
+			}
 		}
 
-		transaction.Status = "approved"
-		tx.Save(&transaction)
+		// กรณีเป็น "เงินถอน": เครดิตถูกหักไปตั้งแต่ตอนแจ้งถอนแล้ว
+		// ดังนั้นตอน Approve แค่เปลี่ยนสถานะก็พอ (ไม่ต้องทำอะไรเพิ่ม)
 
-		return c.JSON(fiber.Map{"message": "อนุมัติสำเร็จ"})
+		transaction.Status = "approved"
+		if err := tx.Save(&transaction).Error; err != nil {
+			return err
+		}
+
+		return c.JSON(fiber.Map{"message": "อนุมัติรายการสำเร็จ"})
 	})
 }
 

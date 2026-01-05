@@ -148,31 +148,6 @@ func ApproveDeposit(c *fiber.Ctx) error {
 }
 
 // [ADMIN] อนุมัติการถอน (Approve Withdraw)
-func ApproveTransaction(c *fiber.Ctx) error {
-	txID := c.Params("id")
-
-	return database.DB.Transaction(func(tx *gorm.DB) error {
-		var transaction models.Transaction
-		if err := tx.First(&transaction, txID).Error; err != nil {
-			return c.Status(404).JSON(fiber.Map{"error": "ไม่พบรายการ"})
-		}
-
-		if transaction.Status != "pending" {
-			return c.Status(400).JSON(fiber.Map{"error": "ดำเนินการไปแล้ว"})
-		}
-
-		// ถ้าเป็นเงินฝาก ให้เพิ่มเครดิต
-		if transaction.Type == "deposit" {
-			tx.Model(&models.User{}).Where("id = ?", transaction.UserID).
-				Update("credit", gorm.Expr("credit + ?", transaction.Amount))
-		}
-
-		transaction.Status = "approved"
-		tx.Save(&transaction)
-
-		return c.JSON(fiber.Map{"message": "อนุมัติสำเร็จ"})
-	})
-}
 
 // [ADMIN] ปฏิเสธการถอนและคืนเงิน (Reject Withdraw)
 func RejectWithdraw(c *fiber.Ctx) error {
