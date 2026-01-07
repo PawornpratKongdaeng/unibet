@@ -15,18 +15,29 @@ var DB *gorm.DB
 
 func InitDB() {
 	var err error
+	var dsn string
 
-	dbUser := getEnv("DB_USER", "postgres")
-	dbPass := getEnv("DB_PASSWORD", "admin123")
-	dbHost := getEnv("DB_HOST", "127.0.0.1") // เปลี่ยนจาก soccer-db เป็น 127.0.0.1
-	dbPort := getEnv("DB_PORT", "5432")
-	dbName := getEnv("DB_NAME", "soccer_db")
-	sslMode := getEnv("DB_SSLMODE", "disable")
+	// 1. ตรวจสอบว่ามี DATABASE_URL หรือไม่ (วิธีที่ Docker Compose ส่งมาให้)
+	envDSN := os.Getenv("DATABASE_URL")
 
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=Asia/Bangkok",
-		dbHost, dbUser, dbPass, dbName, dbPort, sslMode)
+	if envDSN != "" {
+		dsn = envDSN
+		log.Printf("📡 Connecting to Database using DATABASE_URL environment...")
+	} else {
+		// 2. ถ้าไม่มี DATABASE_URL ให้สร้าง DSN จากตัวแปรแยก
+		// เปลี่ยน Default จาก 127.0.0.1 เป็น db เพื่อให้รันใน Docker ได้ทันที
+		dbUser := getEnv("DB_USER", "admin")
+		dbPass := getEnv("DB_PASSWORD", "YourStrongPassword123")
+		dbHost := getEnv("DB_HOST", "db") // เปลี่ยนจาก 127.0.0.1 เป็น db
+		dbPort := getEnv("DB_PORT", "5432")
+		dbName := getEnv("DB_NAME", "soccer_db")
+		sslMode := getEnv("DB_SSLMODE", "disable")
 
-	log.Printf("📡 Connecting to Database: %s:%s (SSL: %s)...", dbHost, dbPort, sslMode)
+		dsn = fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=Asia/Bangkok",
+			dbHost, dbUser, dbPass, dbName, dbPort, sslMode)
+
+		log.Printf("📡 Connecting to Database: %s:%s (SSL: %s)...", dbHost, dbPort, sslMode)
+	}
 
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
