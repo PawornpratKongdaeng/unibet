@@ -1,26 +1,16 @@
-
 services:
   db:
-    image: mysql:8.0
-    container_name: soccer_mysql
+    image: postgres:15-alpine  # เปลี่ยนจาก mysql เป็น postgres
+    container_name: soccer-db
     restart: always
     environment:
-      # ✅ สั่งให้ Backend วิ่งไปหา Service ที่ชื่อว่า 'db'
-      - DB_HOST=db
-      - DB_USER=admin
-      - DB_PASSWORD=YourStrongPassword123
-      - DB_NAME=soccer_db
-      - DB_PORT=5432
-      - DB_SSLMODE=disable
-      # หรือถ้าโค้ดคุณใช้ DATABASE_URL ตัวเดียว:
-      - DATABASE_URL=postgres://admin:YourStrongPassword123@db:5432/soccer_db?sslmode=disable
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=YourStrongPassword123
+      - POSTGRES_DB=soccer_db
     ports:
-      - "3307:3306"
+      - "5432:5432"  # พอร์ตมาตรฐานของ Postgres
     volumes:
-      # เก็บข้อมูลไว้ในเครื่องเรา (ข้อมูลจะไม่หายเวลาปิด Docker)
-      - mysql_data:/var/lib/mysql
-      - ./backend/uploads:/app/uploads
-      # - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres_data:/var/lib/postgresql/data
 
 volumes:
-  mysql_data:
+  postgres_data:

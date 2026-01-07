@@ -46,7 +46,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://IP_เครื่อง_VPS:8000/api/v3
+      NEXT_PUBLIC_API_URL: http://72.62.192.203:8000/api/v3
 
 volumes:
   postgres_data:
