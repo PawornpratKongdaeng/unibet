@@ -5,8 +5,15 @@ services:
     container_name: soccer_mysql
     restart: always
     environment:
-      MYSQL_DATABASE: soccer_db
-      MYSQL_ROOT_PASSWORD: admin123
+      # ✅ สั่งให้ Backend วิ่งไปหา Service ที่ชื่อว่า 'db'
+      - DB_HOST=db
+      - DB_USER=admin
+      - DB_PASSWORD=YourStrongPassword123
+      - DB_NAME=soccer_db
+      - DB_PORT=5432
+      - DB_SSLMODE=disable
+      # หรือถ้าโค้ดคุณใช้ DATABASE_URL ตัวเดียว:
+      - DATABASE_URL=postgres://admin:YourStrongPassword123@db:5432/soccer_db?sslmode=disable
     ports:
       - "3307:3306"
     volumes:
