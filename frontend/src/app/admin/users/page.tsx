@@ -12,6 +12,7 @@ import {
   Loader2,
   Phone,
   Trash2,
+  Eye,
 } from "lucide-react";
 
 const fetcher = (url: string) =>
@@ -87,6 +88,78 @@ export default function AdminUsersPage() {
       }
     }
   };
+  const handleViewDetails = async (user: any) => {
+  // 1. แสดง Loading ระหว่างดึงข้อมูลประวัติการเงิน
+  Swal.fire({
+    title: "Loading History...",
+    didOpen: () => Swal.showLoading(),
+  });
+
+  try {
+    const res = await apiFetch(`/admin/users/${user.id}/transactions`);
+    const transactions = await res.json();
+
+    // 2. สร้าง HTML สำหรับแสดงตารางรายการเงิน
+    const txHtml = transactions.length > 0 
+      ? `
+        <div style="max-height: 300px; overflow-y: auto; margin-top: 15px; border: 1px solid #eee; border-radius: 12px;">
+          <table style="width: 100%; font-size: 12px; border-collapse: collapse; text-align: left;">
+            <thead style="background: #f8f9fa; position: sticky; top: 0;">
+              <tr>
+                <th style="padding: 10px;">Date</th>
+                <th style="padding: 10px;">Type</th>
+                <th style="padding: 10px; text-align: right;">Amount</th>
+                <th style="padding: 10px;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${transactions.map((tx: any) => `
+                <tr style="border-bottom: 1px solid #f1f1f1;">
+                  <td style="padding: 10px; color: #666;">${new Date(tx.created_at).toLocaleDateString()}</td>
+                  <td style="padding: 10px;">
+                    <span style="color: ${tx.type === 'deposit' ? '#127447' : '#be123c'}; font-weight: bold;">
+                      ${tx.type.toUpperCase()}
+                    </span>
+                  </td>
+                  <td style="padding: 10px; text-align: right; font-weight: bold;">
+                    ฿${Number(tx.amount).toLocaleString()}
+                  </td>
+                  <td style="padding: 10px;">
+                    <span style="font-size: 10px; padding: 2px 6px; border-radius: 10px; background: ${tx.status === 'completed' ? '#dcfce7' : '#fee2e2'}; color: ${tx.status === 'completed' ? '#166534' : '#991b1b'};">
+                      ${tx.status}
+                    </span>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `
+      : `<p style="color: #999; margin-top: 20px;">No transaction history found.</p>`;
+
+    // 3. แสดง Modal ข้อมูลทั้งหมด
+    Swal.fire({
+      title: `<span style="color: #127447; font-weight: 900;">MEMBER PROFILE</span>`,
+      width: '600px',
+      html: `
+        <div style="text-align: left; font-family: sans-serif;">
+          <div style="background: #f0fdf4; padding: 15px; border-radius: 15px; margin-bottom: 20px; border: 1px dashed #127447;">
+             <p style="margin: 0; font-size: 14px;"><b>Username:</b> ${user.username}</p>
+             <p style="margin: 5px 0 0 0; font-size: 14px;"><b>Full Name:</b> ${user.fullName || 'N/A'}</p>
+             <p style="margin: 5px 0 0 0; font-size: 14px;"><b>Phone:</b> ${user.phone || 'N/A'}</p>
+             <p style="margin: 5px 0 0 0; font-size: 14px;"><b>Current Credit:</b> <span style="color: #127447; font-weight: bold;">฿${Number(user.credit || 0).toLocaleString()}</span></p>
+          </div>
+          <h4 style="font-weight: 900; text-transform: uppercase; font-size: 12px; color: #666; margin-bottom: 10px;">Transaction History</h4>
+          ${txHtml}
+        </div>
+      `,
+      confirmButtonText: "CLOSE",
+      confirmButtonColor: "#127447",
+    });
+  } catch (err) {
+    Swal.fire("Error", "Could not load transactions", "error");
+  }
+};
 
   const handleCredit = async (user: any) => {
     const { value: amount } = await Swal.fire({
@@ -219,6 +292,13 @@ export default function AdminUsersPage() {
               </div>
 
               {/* Actions */}
+              <button 
+    onClick={() => handleViewDetails(user)}
+    className="p-4 rounded-2xl bg-[#f0fdf4] text-[#127447] hover:bg-[#127447] hover:text-white transition-all shadow-sm"
+    title="View Details & History"
+  >
+    <Eye size={20} />
+  </button>
               <div className="flex items-center justify-end gap-3">
                 <button onClick={() => handleDeleteUser(user)} className="p-4 rounded-2xl bg-zinc-50 text-zinc-400 hover:bg-rose-100 hover:text-rose-600 transition-all shadow-sm">
                   <Trash2 size={20} />

@@ -1,0 +1,24 @@
+name: Docker CD (Continuous Deployment)
+
+on:
+  push:
+    branches:
+      - main  # ทำงานเฉพาะเมื่อ push ขึ้น branch main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}     # ไอพี 124.122.46.167
+          username: ${{ secrets.SERVER_USER }} # root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}  # Private Key
+          script: |
+            cd ~/unibet
+            git pull origin main
+            # สั่ง build และรันแบบ background
+            docker-compose up -d --build
+            # ลบ image เก่าๆ ที่ไม่ได้ใช้เพื่อประหยัดพื้นที่ดิสก์
+            docker image prune -f
