@@ -182,24 +182,41 @@ export default function AdminUsersPage() {
 // --- Helper HTML Generators ---
 
 // --- ธุรกรรม (ฝาก-ถอน) ---
+// --- 1. Financial History (Focused on Deposits/Withdrawals) ---
 function buildTransactionRows(txs: any[]) {
-  if (!txs || txs.length === 0) return '<tr><td colspan="4" class="p-10 text-center text-zinc-400 font-bold">ไม่พบประวัติการทำรายการ</td></tr>';
+  if (!txs || txs.length === 0) return '<tr><td colspan="4" class="p-10 text-center text-zinc-400 font-bold">No transaction history found</td></tr>';
   
   return txs.map(tx => {
-    const isPlus = tx.type?.toLowerCase().includes('deposit') || tx.type?.toLowerCase().includes('payout');
-    const typeLabel = tx.type?.toLowerCase() === 'deposit' ? 'ฝากเงิน' : (tx.type?.toLowerCase() === 'withdraw' ? 'ถอนเงิน' : tx.type);
-    
+    const type = tx.type?.toLowerCase();
+    let typeLabel = tx.type;
+    let colorClass = 'text-zinc-500';
+
+    // Map types to English labels and colors
+    if (type === 'deposit') {
+      typeLabel = 'Deposit';
+      colorClass = 'text-emerald-600';
+    } else if (type === 'withdraw') {
+      typeLabel = 'Withdraw';
+      colorClass = 'text-rose-500';
+    } else if (type === 'payout') {
+      typeLabel = 'Payout';
+      colorClass = 'text-blue-600';
+    } else if (type === 'bet') {
+      typeLabel = 'Bet Placed';
+      colorClass = 'text-zinc-400';
+    }
+
     return `
       <tr class="border-b border-zinc-50 text-[11px]">
         <td class="p-3">
-          <div class="font-bold text-zinc-600">${new Date(tx.created_at).toLocaleDateString('th-TH')}</div>
-          <div class="text-[9px] text-zinc-400">${new Date(tx.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
+          <div class="font-bold text-zinc-600">${new Date(tx.created_at).toLocaleDateString('en-US')}</div>
+          <div class="text-[9px] text-zinc-400">${new Date(tx.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}</div>
         </td>
-        <td class="p-3 font-black ${isPlus ? 'text-emerald-600' : 'text-rose-500'} uppercase">${typeLabel}</td>
+        <td class="p-3 font-black ${colorClass} uppercase">${typeLabel}</td>
         <td class="p-3 font-black text-right text-sm">฿${Number(tx.amount).toLocaleString()}</td>
         <td class="p-3 text-center">
           <span class="px-2 py-0.5 rounded-full text-[9px] font-black ${tx.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-zinc-500'}">
-            ${(tx.status || 'PENDING').toUpperCase()}
+            ${(tx.status || 'SUCCESS').toUpperCase()}
           </span>
         </td>
       </tr>
@@ -207,29 +224,35 @@ function buildTransactionRows(txs: any[]) {
   }).join('');
 }
 
-// --- ประวัติการเดิมพัน (บิล) ---
+// --- 2. Bet History (Displays Actual Team Names) ---
 function buildBetRows(bets: any[]) {
-  if (!bets || bets.length === 0) return '<tr><td colspan="5" class="p-10 text-center text-zinc-400 font-bold">ไม่พบประวัติการเดิมพัน</td></tr>';
+  if (!bets || bets.length === 0) return '<tr><td colspan="4" class="p-10 text-center text-zinc-400 font-bold">No betting history found</td></tr>';
   
   return bets.map(bet => {
-    const result = bet.result?.toLowerCase(); // win, loss, draw, pending
+    const result = bet.result?.toLowerCase();
+    
+    // Convert 'home'/'away' string to the actual team name
+    let displayPick = bet.pick;
+    if (bet.pick?.toLowerCase() === 'home') {
+      displayPick = bet.home_team;
+    } else if (bet.pick?.toLowerCase() === 'away') {
+      displayPick = bet.away_team;
+    }
+
     const resColor = result === 'win' ? 'text-emerald-500' : (result === 'loss' ? 'text-rose-500' : 'text-zinc-400');
-    const resBg = result === 'win' ? 'bg-emerald-50' : (result === 'loss' ? 'bg-rose-50' : 'bg-zinc-50');
 
     return `
-      <tr class="border-b border-zinc-50 text-[11px] ${resBg}">
+      <tr class="border-b border-zinc-50 text-[11px]">
         <td class="p-3">
-          <div class="font-bold text-zinc-600">${new Date(bet.created_at).toLocaleDateString('th-TH')}</div>
-          <div class="text-[9px] text-zinc-400">${new Date(bet.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
+          <div class="font-bold text-zinc-600">${new Date(bet.created_at).toLocaleDateString('en-US')}</div>
+          <div class="text-[9px] text-zinc-400">${new Date(bet.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}</div>
         </td>
         <td class="p-3">
-          <div class="font-black text-zinc-800 uppercase leading-tight">${bet.home_team} <span class="text-zinc-400">VS</span> ${bet.away_team}</div>
-          <div class="text-[10px] text-[#127447] font-bold">เลือก: ${bet.pick}</div>
+          <div class="font-black text-zinc-800 uppercase leading-tight">${bet.home_team} vs ${bet.away_team}</div>
+          <div class="text-[10px] text-[#127447] font-bold mt-1">PICK: ${displayPick}</div>
         </td>
         <td class="p-3 font-black text-right">฿${Number(bet.amount).toLocaleString()}</td>
-        <td class="p-3 text-center">
-          <div class="font-black ${resColor} uppercase tracking-tighter">${result || 'WAITING'}</div>
-        </td>
+        <td class="p-3 text-center font-black ${resColor} uppercase">${result || 'WAITING'}</td>
       </tr>
     `;
   }).join('');
@@ -239,35 +262,67 @@ function generateInspectorHTML(user: any, txs: any[], bets: any[]) {
   return `
     <style>
       .insp-table { width: 100%; border-collapse: collapse; text-align: left; }
-      .insp-table th { background: #f8f9fa; padding: 12px; font-size: 10px; font-weight: 900; color: #999; text-transform: uppercase; }
-      .tab-item { transition: all 0.3s; border-bottom: 4px solid transparent; color: #a1a1aa; }
-      .tab-item.active { color: #127447; border-color: #127447; }
+      .insp-table th { background: #f9fafb; padding: 12px 10px; font-size: 10px; font-weight: 900; color: #9ca3af; text-transform: uppercase; }
+      .tab-item { transition: all 0.2s; border: 2px solid transparent; color: #9ca3af; border-radius: 8px; margin: 0 4px; cursor: pointer; }
+      .tab-item.active { color: #127447; border-color: #127447; background: white; }
     </style>
-    <div class="bg-[#f0fdf4] border-2 border-[#127447] rounded-3xl p-6 mb-6 flex justify-between items-center">
+
+    <div class="border-2 border-[#127447] rounded-[1.5rem] p-6 mb-6 flex justify-between items-center bg-white shadow-sm">
       <div class="text-left">
-        <p class="text-[10px] font-black text-[#127447] uppercase">Current Balance</p>
+        <p class="text-[10px] font-black text-[#127447] uppercase tracking-wider">Current Balance</p>
         <h2 class="text-4xl font-black text-[#127447]">฿${Number(user.credit || 0).toLocaleString()}</h2>
       </div>
       <div class="text-right">
-         <p class="text-[10px] font-black text-zinc-400 uppercase">Username</p>
-         <div class="text-[#127447] font-black">${user.username}</div>
+        <p class="text-[10px] font-black text-zinc-400 uppercase">Username</p>
+        <div class="text-xl font-black text-zinc-800">${user.username}</div>
       </div>
     </div>
-    <div class="flex gap-6 border-b-2 border-zinc-100 mb-4">
-      <button id="t-fin" class="tab-item active flex-1 py-4 font-black text-xs uppercase" onclick="switchInspectorTab('fin')">Financials</button>
-      <button id="t-bet" class="tab-item flex-1 py-4 font-black text-xs uppercase" onclick="switchInspectorTab('bet')">Bet History</button>
+
+    <div class="flex p-1 bg-zinc-100 rounded-xl mb-4">
+      <button id="t-fin" class="tab-item active flex-1 py-3 font-black text-xs uppercase" onclick="switchInspectorTab('fin')">Financials</button>
+      <button id="t-bet" class="tab-item flex-1 py-3 font-black text-xs uppercase" onclick="switchInspectorTab('bet')">Bet History</button>
     </div>
+
     <div id="box-fin" class="max-h-[400px] overflow-y-auto">
       <table class="insp-table">
-        <thead><tr><th>Date</th><th>Type</th><th style="text-align:right">Amount</th><th style="text-align:center">Status</th></tr></thead>
+        <thead>
+          <tr><th>Date</th><th>Type</th><th style="text-align:right">Amount</th><th style="text-align:center">Status</th></tr>
+        </thead>
         <tbody>${buildTransactionRows(txs)}</tbody>
       </table>
     </div>
+
     <div id="box-bet" style="display:none" class="max-h-[400px] overflow-y-auto">
-       <table class="insp-table">
-        <thead><tr><th>Match</th><th style="text-align:center">Pick</th><th style="text-align:right">Amount</th><th style="text-align:center">Result</th></tr></thead>
+      <table class="insp-table">
+        <thead>
+          <tr><th>Match</th><th>Pick</th><th style="text-align:right">Amount</th><th style="text-align:center">Result</th></tr>
+        </thead>
         <tbody>${buildBetRows(bets)}</tbody>
       </table>
     </div>
   `;
 }
+
+// In your main component, update SweetAlert calls:
+const handleAddUser = async () => {
+    const { value: formValues } = await Swal.fire({
+      title: '<span class="text-2xl font-black text-[#127447]">ADD NEW MEMBER</span>',
+      // ... html template ...
+      confirmButtonText: 'CREATE ACCOUNT',
+      showCancelButton: true,
+      cancelButtonText: 'CANCEL'
+    });
+    // ...
+};
+
+const handleDelete = async (id: string) => {
+    const result = await Swal.fire({
+      title: 'Are you sure?',
+      text: "Do you really want to delete this member?",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#e11d48',
+      confirmButtonText: 'Yes, Delete'
+    });
+    // ...
+};
