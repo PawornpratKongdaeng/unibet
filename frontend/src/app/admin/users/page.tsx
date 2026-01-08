@@ -4,7 +4,7 @@ import useSWR from "swr";
 import { apiFetch } from "@/lib/api";
 import Swal from "sweetalert2";
 import {
-  UserPlus, Search, Ban, Wallet, Loader2, Phone, Trash2, Eye, 
+  UserPlus, Search, Ban, Wallet, Loader2, Phone, Trash2, Eye, X
 } from "lucide-react";
 
 const fetcher = (url: string) =>
@@ -17,6 +17,56 @@ export default function AdminUsersPage() {
   const [search, setSearch] = useState("");
   const { data: users, mutate, isLoading } = useSWR("/admin/users", fetcher);
 
+  // --- 1. ฟังก์ชันเพิ่มผู้ใช้งานใหม่ ---
+  const handleAddUser = async () => {
+    const { value: formValues } = await Swal.fire({
+      title: '<span style="font-family: inherit; font-weight: 900;">เพิ่มสมาชิกใหม่</span>',
+      html: `
+        <div style="text-align: left; font-family: sans-serif;">
+          <label style="font-size: 12px; font-weight: bold; color: #666;">USERNAME</label>
+          <input id="swal-username" class="swal2-input" placeholder="ชื่อผู้ใช้งาน" style="margin-top: 5px; border-radius: 12px;">
+          <label style="font-size: 12px; font-weight: bold; color: #666; margin-top: 10px; display: block;">PASSWORD</label>
+          <input id="swal-password" type="password" class="swal2-input" placeholder="รหัสผ่าน" style="margin-top: 5px; border-radius: 12px;">
+          <label style="font-size: 12px; font-weight: bold; color: #666; margin-top: 10px; display: block;">PHONE (Optional)</label>
+          <input id="swal-phone" class="swal2-input" placeholder="เบอร์โทรศัพท์" style="margin-top: 5px; border-radius: 12px;">
+        </div>
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: 'สร้างสมาชิก',
+      confirmButtonColor: '#127447',
+      cancelButtonText: 'ยกเลิก',
+      preConfirm: () => {
+        const username = (document.getElementById('swal-username') as HTMLInputElement).value;
+        const password = (document.getElementById('swal-password') as HTMLInputElement).value;
+        const phone = (document.getElementById('swal-phone') as HTMLInputElement).value;
+        if (!username || !password) {
+          Swal.showValidationMessage('กรุณากรอกชื่อผู้ใช้และรหัสผ่าน');
+        }
+        return { username, password, phone };
+      }
+    });
+
+    if (formValues) {
+      try {
+        const res = await apiFetch("/admin/users", {
+          method: "POST",
+          body: JSON.stringify(formValues),
+        });
+        if (res.ok) {
+          Swal.fire("สำเร็จ", "เพิ่มสมาชิกใหม่เรียบร้อยแล้ว", "success");
+          mutate();
+        } else {
+          const error = await res.json();
+          Swal.fire("ผิดพลาด", error.message || "ไม่สามารถเพิ่มสมาชิกได้", "error");
+        }
+      } catch (err) {
+        Swal.fire("ผิดพลาด", "เกิดข้อผิดพลาดในการเชื่อมต่อ", "error");
+      }
+    }
+  };
+
+  // --- 2. ฟังก์ชันดูรายละเอียด (Transactions & Bets) ---
   const handleViewDetails = async (user: any) => {
     Swal.fire({
       title: "กำลังดึงข้อมูล...",
@@ -25,7 +75,6 @@ export default function AdminUsersPage() {
     });
 
     try {
-      // ดึงข้อมูล Transactions และ Bet History พร้อมกัน
       const [txRes, betRes] = await Promise.all([
         apiFetch(`/admin/users/${user.id}/transactions`).catch(() => null),
         apiFetch(`/admin/users/${user.id}/bets`).catch(() => null)
@@ -34,17 +83,17 @@ export default function AdminUsersPage() {
       const transactions = txRes && txRes.ok ? await txRes.json() : [];
       const bets = betRes && betRes.ok ? await betRes.json() : [];
 
-      // --- 1. กรองเฉพาะรายการ "ธุรกรรม" ที่มีคู่บอล (Match Only) ---
+      // กรองธุรกรรมเฉพาะที่เป็นการเดิมพัน (มีข้อมูลทีม)
       const matchTransactions = transactions.filter((tx: any) => tx.home_team && tx.away_team);
 
-      const txHtml = (Array.isArray(matchTransactions) && matchTransactions.length > 0) ? `
+      const txHtml = (matchTransactions.length > 0) ? `
         <div class="table-container">
           <table class="details-table">
             <thead>
               <tr>
-                <th>วันที่/เวลา</th>
-                <th>ประเภท / คู่แข่งขัน</th>
-                <th style="text-align:right;">จำนวน</th>
+                <th>วัน/เวลา</th>
+                <th>รายละเอียด</th>
+                <th style="text-align:right;">ยอดเงิน</th>
                 <th style="text-align:center;">สถานะ</th>
               </tr>
             </thead>
@@ -52,33 +101,31 @@ export default function AdminUsersPage() {
               ${matchTransactions.map((tx: any) => {
                 const date = new Date(tx.created_at).toLocaleDateString('th-TH');
                 const time = new Date(tx.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-                const typeColor = tx.type.toLowerCase() === 'payout' ? '#10b981' : '#f43f5e';
-                
+                const isWin = tx.type.toLowerCase() === 'payout';
                 return `
                 <tr>
-                  <td><div style="font-weight:700;">${date}</div><div style="font-size:10px; color:#999;">${time} น.</div></td>
+                  <td><div style="font-weight:700;">${date}</div><div style="font-size:10px; color:#999;">${time}</div></td>
                   <td>
-                    <b style="color:${typeColor}; text-transform:uppercase;">${tx.type}</b>
-                    <div style="font-size:11px; color:#127447; font-weight:700; margin-top:2px;">⚽ ${tx.home_team} vs ${tx.away_team}</div>
+                    <b style="color:${isWin ? '#10b981' : '#f43f5e'}; text-transform:uppercase; font-size:10px;">${tx.type}</b>
+                    <div style="font-size:11px; color:#334155; font-weight:700; margin-top:2px;">⚽ ${tx.home_team} vs ${tx.away_team}</div>
                   </td>
-                  <td style="text-align:right; font-weight:800;">฿${Number(tx.amount).toLocaleString()}</td>
-                  <td style="text-align:center;"><span style="font-size:10px; font-weight:700; color:#64748b;">${tx.status.toUpperCase()}</span></td>
+                  <td style="text-align:right; font-weight:800; color:${isWin ? '#10b981' : '#1e293b'}">฿${Number(tx.amount).toLocaleString()}</td>
+                  <td style="text-align:center;"><span class="status-badge">${tx.status.toUpperCase()}</span></td>
                 </tr>`;
               }).join('')}
             </tbody>
           </table>
-        </div>` : '<p class="no-data">ไม่พบรายการธุรกรรมที่เป็นการเดิมพัน</p>';
+        </div>` : '<div class="no-data">ไม่พบประวัติธุรกรรม</div>';
 
-      // --- 2. จัดการ HTML สำหรับแถบ Bet History (รองรับบอลสเต็ป/Mix Play) ---
-      const betHtml = (Array.isArray(bets) && bets.length > 0) ? `
+      const betHtml = (bets.length > 0) ? `
         <div class="table-container">
           <table class="details-table">
             <thead>
               <tr>
-                <th>คู่แข่งขัน / เวลา</th>
+                <th>คู่แข่งขัน</th>
                 <th style="text-align:center;">ตัวเลือก</th>
-                <th style="text-align:right;">ยอดเดิมพัน</th>
-                <th style="text-align:center;">ผลลัพธ์</th>
+                <th style="text-align:right;">เดิมพัน</th>
+                <th style="text-align:center;">ผล</th>
               </tr>
             </thead>
             <tbody>
@@ -87,67 +134,58 @@ export default function AdminUsersPage() {
                 const isParlay = bet.items && bet.items.length > 0;
                 const resColor = bet.result === 'win' ? '#10b981' : (bet.result === 'loss' ? '#f43f5e' : '#94a3b8');
                 
-                let matchContent = "";
-                if (isParlay) {
-                    matchContent = `<div style="color:#1e40af; font-weight:900; margin-bottom:4px;">MIX PARLAY (${bet.items.length} คู่)</div>` +
-                    bet.items.map((item: any) => `
-                        <div style="font-size:11px; border-left:2px solid #127447; padding-left:5px; margin-bottom:3px;">
-                            <b>${item.home_team} vs ${item.away_team}</b><br/>
-                            <span style="color:#666;">ทาย: ${item.pick}</span>
-                        </div>
-                    `).join('');
-                } else {
-                    matchContent = `<div style="font-weight:800;">${bet.home_team} vs ${bet.away_team}</div>`;
-                }
+                let matchContent = isParlay 
+                  ? `<div style="color:#1e40af; font-weight:900; font-size:10px; margin-bottom:4px;">MIX PARLAY (${bet.items.length})</div>` +
+                    bet.items.map((item: any) => `<div style="font-size:10px; border-left:2px solid #127447; padding-left:5px; margin-bottom:2px;"><b>${item.home_team} - ${item.away_team}</b></div>`).join('')
+                  : `<div style="font-weight:800;">${bet.home_team} vs ${bet.away_team}</div>`;
 
                 return `
                 <tr>
-                  <td>${matchContent}<div style="font-size:10px; color:#999; margin-top:4px;">${date}</div></td>
-                  <td style="text-align:center;">
-                    <div style="background:#f0fdf4; border:1px solid #127447; color:#127447; padding:2px 4px; border-radius:4px; font-weight:900; font-size:10px;">
-                        ${bet.pick || bet.selection || '-'}
-                    </div>
-                  </td>
+                  <td>${matchContent}<div style="font-size:10px; color:#999; margin-top:2px;">${date}</div></td>
+                  <td style="text-align:center;"><span class="pick-badge">${bet.pick || bet.selection || '-'}</span></td>
                   <td style="text-align:right; font-weight:800;">฿${Number(bet.amount).toLocaleString()}</td>
-                  <td style="text-align:center;">
-                    <div style="background:${resColor}; color:white; padding:3px 6px; border-radius:6px; font-size:9px; font-weight:900; text-transform:uppercase;">
-                        ${bet.status || bet.result}
-                    </div>
-                  </td>
+                  <td style="text-align:center;"><span class="res-badge" style="background:${resColor}">${bet.status || bet.result}</span></td>
                 </tr>`;
               }).join('')}
             </tbody>
           </table>
-        </div>` : '<p class="no-data">ไม่มีประวัติการเดิมพัน</p>';
+        </div>` : '<div class="no-data">ไม่มีประวัติการเดิมพัน</div>';
 
-      // --- 3. แสดง Modal ด้วย SweetAlert2 ---
       Swal.fire({
-        title: `<div style="font-size:22px; font-weight:900; color:#127447;">USER INSPECTOR</div>`,
-        width: '95%',
-        showConfirmButton: true,
-        confirmButtonText: "ปิดหน้าต่าง",
-        confirmButtonColor: "#127447",
+        title: `<div style="font-size:18px; font-weight:900; color:#127447; letter-spacing:-0.5px;">USER INSPECTOR</div>`,
+        width: '900px',
+        showConfirmButton: false,
+        showCloseButton: true,
         html: `
           <style>
-            .table-container { max-height:400px; overflow:auto; border:1px solid #eee; border-radius:15px; margin-top:10px; }
+            .table-container { max-height:450px; overflow:auto; border:1px solid #f1f5f9; border-radius:12px; margin-top:10px; }
             .details-table { width:100%; border-collapse:collapse; font-size:12px; }
-            .details-table th { background:#f8f9fa; padding:10px; position:sticky; top:0; z-index:1; text-align:left; color:#666; font-size:10px; }
-            .details-table td { padding:10px; border-bottom:1px solid #f1f5f9; text-align:left; }
-            .user-info-card { background:#f0fdf4; padding:15px; border-radius:15px; border:2px solid #127447; margin-bottom:15px; text-align:left; }
-            .nav-tabs { display:flex; gap:5px; margin-bottom:10px; border-bottom:2px solid #f1f5f9; }
-            .tab-btn { flex:1; padding:12px; font-size:12px; font-weight:800; cursor:pointer; border:none; background:none; color:#94a3b8; transition:0.3s; }
-            .tab-btn.active { color:#127447; border-bottom:3px solid #127447; }
-            .no-data { padding:40px; text-align:center; color:#94a3b8; font-weight:bold; }
+            .details-table th { background:#f8f9fa; padding:12px; position:sticky; top:0; z-index:10; text-align:left; color:#64748b; font-size:10px; text-transform:uppercase; border-bottom:2px solid #f1f5f9; }
+            .details-table td { padding:12px; border-bottom:1px solid #f8fafc; text-align:left; vertical-align: top; }
+            .user-info-card { background:#127447; padding:20px; border-radius:16px; margin-bottom:15px; text-align:left; color: white; display:flex; justify-content:space-between; align-items:center; }
+            .nav-tabs { display:flex; gap:10px; margin-bottom:15px; background:#f1f5f9; padding:5px; border-radius:12px; }
+            .tab-btn { flex:1; padding:10px; font-size:12px; font-weight:800; cursor:pointer; border:none; background:transparent; color:#64748b; border-radius:8px; transition:0.2s; }
+            .tab-btn.active { background:white; color:#127447; shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+            .status-badge { font-size:9px; font-weight:800; color:#64748b; background:#f1f5f9; padding:2px 6px; border-radius:4px; }
+            .pick-badge { background:#f0fdf4; border:1px solid #dcfce7; color:#127447; padding:2px 6px; border-radius:4px; font-weight:800; font-size:10px; }
+            .res-badge { color:white; padding:3px 8px; border-radius:6px; font-size:9px; font-weight:900; text-transform:uppercase; }
+            .no-data { padding:60px; text-align:center; color:#94a3b8; font-weight:bold; font-size:14px; }
           </style>
           
           <div class="user-info-card">
-            <div style="font-size:10px; color:#127447; font-weight:800; text-transform:uppercase;">Username: ${user.username}</div>
-            <div style="font-size:24px; font-weight:900; color:#127447;">฿${Number(user.credit || 0).toLocaleString()}</div>
+            <div>
+               <div style="font-size:10px; opacity:0.8; font-weight:800; text-transform:uppercase; margin-bottom:2px;">Member Username</div>
+               <div style="font-size:20px; font-weight:900;">${user.username}</div>
+            </div>
+            <div style="text-align:right;">
+               <div style="font-size:10px; opacity:0.8; font-weight:800; text-transform:uppercase; margin-bottom:2px;">Current Balance</div>
+               <div style="font-size:24px; font-weight:900;">฿${Number(user.credit || 0).toLocaleString()}</div>
+            </div>
           </div>
 
           <div class="nav-tabs">
-            <button id="tab-tx-btn" class="tab-btn active" onclick="window.switchTab('tx')">ธุรกรรมการเงิน (เฉพาะคู่บอล)</button>
-            <button id="tab-bet-btn" class="tab-btn" onclick="window.switchTab('bet')">ประวัติเดิมพัน</button>
+            <button id="tab-tx-btn" class="tab-btn active" onclick="window.switchTab('tx')">ธุรกรรมฟุตบอล</button>
+            <button id="tab-bet-btn" class="tab-btn" onclick="window.switchTab('bet')">ประวัติการวางเดิมพัน</button>
           </div>
 
           <div id="tab-tx-content">${txHtml}</div>
@@ -171,22 +209,22 @@ export default function AdminUsersPage() {
         `,
         customClass: { popup: 'rounded-[2rem]' }
       });
-
     } catch (err) {
-      console.error(err);
       Swal.fire("Error", "ไม่สามารถโหลดข้อมูลได้", "error");
     }
   };
 
+  // --- 3. ฟังก์ชันปรับเครดิต ---
   const handleCredit = async (user: any) => {
     const { value: amount } = await Swal.fire({
-      title: 'ปรับเครดิต',
+      title: 'ปรับปรุงเครดิต',
+      text: `Username: ${user.username}`,
       input: 'number',
-      inputLabel: `Username: ${user.username}`,
       inputPlaceholder: 'ใส่จำนวนเงิน (เช่น 100 หรือ -100)',
       showCancelButton: true,
       confirmButtonColor: '#127447',
-      confirmButtonText: 'ยืนยัน'
+      confirmButtonText: 'อัปเดตเครดิต',
+      cancelButtonText: 'ยกเลิก'
     });
 
     if (amount) {
@@ -205,21 +243,23 @@ export default function AdminUsersPage() {
     }
   };
 
+  // --- 4. ฟังก์ชันลบผู้ใช้ ---
   const handleDeleteUser = async (user: any) => {
     const confirm = await Swal.fire({
       title: 'ลบผู้ใช้งาน?',
-      text: `คุณกำลังจะลบ ${user.username} ออกจากระบบ`,
+      text: `คุณกำลังจะลบ ${user.username} ข้อมูลทั้งหมดของสมาชิกรายนี้จะหายไป`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#f43f5e',
-      confirmButtonText: 'ยืนยันการลบ'
+      confirmButtonText: 'ยืนยันการลบ',
+      cancelButtonText: 'ยกเลิก'
     });
 
     if (confirm.isConfirmed) {
       try {
         const res = await apiFetch(`/admin/users/${user.id}`, { method: "DELETE" });
         if (res.ok) {
-          Swal.fire("สำเร็จ", "ลบผู้ใช้งานเรียบร้อย", "success");
+          Swal.fire("สำเร็จ", "ลบผู้ใช้งานออกจากระบบแล้ว", "success");
           mutate();
         }
       } catch (err) {
@@ -234,31 +274,43 @@ export default function AdminUsersPage() {
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] p-4 lg:p-10">
+      {/* Header & Search */}
       <div className="flex flex-col lg:flex-row justify-between items-center gap-6 mb-12">
         <div>
           <h1 className="text-4xl lg:text-6xl font-black italic text-[#127447] tracking-tighter uppercase">Members</h1>
-          <p className="text-zinc-400 font-bold text-xs tracking-widest uppercase mt-2">Database Management System</p>
+          <p className="text-zinc-400 font-bold text-xs tracking-widest uppercase mt-2">Member Management System</p>
         </div>
         
         <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
-          <div className="relative flex-1">
+          <div className="relative flex-1 lg:w-80">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
             <input 
               className="w-full bg-white border-none rounded-2xl py-4 pl-12 pr-6 shadow-sm focus:ring-2 focus:ring-[#127447] outline-none font-bold"
-              placeholder="ค้นหาด้วยชื่อหรือเบอร์โทร..."
+              placeholder="ค้นหาชื่อหรือเบอร์โทร..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <button className="bg-[#127447] text-white px-8 py-4 rounded-2xl font-black text-xs uppercase shadow-lg shadow-[#127447]/20 flex items-center justify-center gap-2">
+          <button 
+            onClick={handleAddUser}
+            className="bg-[#127447] text-white px-8 py-4 rounded-2xl font-black text-xs uppercase shadow-lg shadow-[#127447]/20 flex items-center justify-center gap-2 hover:bg-black transition-all"
+          >
             <UserPlus size={18} /> Add User
           </button>
         </div>
       </div>
 
+      {/* User Cards */}
       <div className="grid grid-cols-1 gap-6">
         {isLoading ? (
-          <div className="text-center py-20"><Loader2 className="animate-spin inline text-[#127447]" size={40} /></div>
+          <div className="text-center py-20">
+            <Loader2 className="animate-spin inline text-[#127447]" size={40} />
+            <p className="mt-4 font-bold text-zinc-400">LOADING DATABASE...</p>
+          </div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="bg-white p-20 rounded-[3rem] text-center border border-dashed border-zinc-200">
+             <p className="text-zinc-400 font-black uppercase tracking-widest">No Members Found</p>
+          </div>
         ) : (
           filteredUsers.map((user: any) => (
             <div key={user.id} className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-zinc-100 shadow-sm hover:shadow-xl transition-all flex flex-col lg:flex-row items-center gap-8 group">
@@ -267,9 +319,9 @@ export default function AdminUsersPage() {
                   {user.username[0].toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h3 className="text-xl md:text-2xl font-black text-zinc-900 truncate uppercase">{user.username}</h3>
+                  <h3 className="text-xl md:text-2xl font-black text-zinc-900 truncate uppercase tracking-tight">{user.username}</h3>
                   <div className="flex items-center gap-2 text-zinc-400 font-bold text-sm">
-                    <Phone size={14} /> {user.phone || "ไม่มีเบอร์โทรศัพท์"}
+                    <Phone size={14} className="text-[#127447]" /> {user.phone || "---"}
                   </div>
                 </div>
               </div>
