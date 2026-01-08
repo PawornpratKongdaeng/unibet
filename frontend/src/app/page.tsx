@@ -127,7 +127,7 @@ export default function Home() {
               PREMIUM<br />
               <span className="text-emerald-400">SPORT ENGINE</span>
             </h1>
-            <p className="mt-4 text-[10px] md:text-xs font-black tracking-[0.4em] opacity-40 uppercase">Thunibet Professional System</p>
+            <p className="mt-4 text-[10px] md:text-xs font-black tracking-[0.4em] opacity-40 uppercase">Thunibet </p>
           </div>
         </div>
 
