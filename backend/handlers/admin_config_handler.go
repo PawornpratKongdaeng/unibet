@@ -230,12 +230,14 @@ func RequestWithdraw(c *fiber.Ctx) error {
 	})
 }
 func GetUserTransactions(c *fiber.Ctx) error {
-	userID := c.Params("id") // Fiber ใช้ Params เติม s และไม่มีเครื่องหมาย :
+	userID := c.Params("id")
 	var transactions []models.Transaction
 
-	// ดึงข้อมูล Transaction ที่ user_id ตรงกัน เรียงจากใหม่ไปเก่า
-	// ใช้ Preload("User") หากต้องการข้อมูลชื่อผู้ใช้ด้วย
-	result := database.DB.Where("user_id = ?", userID).Order("created_at desc").Find(&transactions)
+	// ดึงข้อมูลพร้อมเรียงจากใหม่ไปเก่า (Order by created_at DESC)
+	// ข้อมูล CreatedAt, UpdatedAt จะถูกดึงออกมาโดยอัตโนมัติจากโครงสร้าง Model
+	result := database.DB.Where("user_id = ?", userID).
+		Order("created_at desc").
+		Find(&transactions)
 
 	if result.Error != nil {
 		return c.Status(500).JSON(fiber.Map{
@@ -243,6 +245,6 @@ func GetUserTransactions(c *fiber.Ctx) error {
 		})
 	}
 
-	// ใน Fiber ต้อง return c.JSON
-	return c.JSON(transactions)
+	// ส่งค่ากลับไป (ตัว JSON จะมีฟิลด์ created_at มาให้โดยอัตโนมัติ)
+	return c.Status(200).JSON(transactions)
 }
