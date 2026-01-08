@@ -17,15 +17,15 @@ export default function AdminUsersPage() {
   const [search, setSearch] = useState("");
   const { data: users, mutate, isLoading } = useSWR("/admin/users", fetcher);
 
-const handleViewDetails = async (user: any) => {
+  const handleViewDetails = async (user: any) => {
     Swal.fire({
-      title: "Fetching data...",
+      title: "กำลังดึงข้อมูล...",
       allowOutsideClick: false,
       didOpen: () => Swal.showLoading(),
     });
 
     try {
-      // เรียก API พร้อมกันทั้ง 2 เส้น
+      // ดึงข้อมูล Transactions และ Bet History พร้อมกัน
       const [txRes, betRes] = await Promise.all([
         apiFetch(`/admin/users/${user.id}/transactions`).catch(() => null),
         apiFetch(`/admin/users/${user.id}/bets`).catch(() => null)
@@ -34,75 +34,98 @@ const handleViewDetails = async (user: any) => {
       const transactions = txRes && txRes.ok ? await txRes.json() : [];
       const bets = betRes && betRes.ok ? await betRes.json() : [];
 
-      // ส่วนจัดการ HTML สำหรับแถบ Financials
-      const txHtml = (Array.isArray(transactions) && transactions.length > 0) ? `
+      // --- 1. กรองเฉพาะรายการ "ธุรกรรม" ที่มีคู่บอล (Match Only) ---
+      const matchTransactions = transactions.filter((tx: any) => tx.home_team && tx.away_team);
+
+      const txHtml = (Array.isArray(matchTransactions) && matchTransactions.length > 0) ? `
         <div class="table-container">
           <table class="details-table">
             <thead>
               <tr>
-                <th>Date/Time</th>
-                <th>Type / Match</th>
-                <th style="text-align:right;">Amount</th>
-                <th style="text-align:center;">Status</th>
+                <th>วันที่/เวลา</th>
+                <th>ประเภท / คู่แข่งขัน</th>
+                <th style="text-align:right;">จำนวน</th>
+                <th style="text-align:center;">สถานะ</th>
               </tr>
             </thead>
             <tbody>
-              ${transactions.map((tx: any) => {
+              ${matchTransactions.map((tx: any) => {
                 const date = new Date(tx.created_at).toLocaleDateString('th-TH');
                 const time = new Date(tx.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-                const matchName = tx.home_team && tx.away_team ? `${tx.home_team} vs ${tx.away_team}` : "";
+                const typeColor = tx.type.toLowerCase() === 'payout' ? '#10b981' : '#f43f5e';
                 
                 return `
                 <tr>
-                  <td><div style="font-weight:700;">${date}</div><div style="font-size:10px; color:#999;">${time}</div></td>
+                  <td><div style="font-weight:700;">${date}</div><div style="font-size:10px; color:#999;">${time} น.</div></td>
                   <td>
-                    <b style="color:${tx.type === 'deposit' ? '#10b981' : '#f43f5e'}; text-transform:uppercase;">${tx.type}</b>
-                    ${matchName ? `<div style="font-size:10px; color:#127447; font-weight:700;">⚽ ${matchName}</div>` : ""}
+                    <b style="color:${typeColor}; text-transform:uppercase;">${tx.type}</b>
+                    <div style="font-size:11px; color:#127447; font-weight:700; margin-top:2px;">⚽ ${tx.home_team} vs ${tx.away_team}</div>
                   </td>
                   <td style="text-align:right; font-weight:800;">฿${Number(tx.amount).toLocaleString()}</td>
-                  <td style="text-align:center;"><span style="font-size:10px; font-weight:700;">${tx.status.toUpperCase()}</span></td>
+                  <td style="text-align:center;"><span style="font-size:10px; font-weight:700; color:#64748b;">${tx.status.toUpperCase()}</span></td>
                 </tr>`;
               }).join('')}
             </tbody>
           </table>
-        </div>` : '<p class="no-data">No financial records found.</p>';
+        </div>` : '<p class="no-data">ไม่พบรายการธุรกรรมที่เป็นการเดิมพัน</p>';
 
-      // ส่วนจัดการ HTML สำหรับแถบ Bet History
+      // --- 2. จัดการ HTML สำหรับแถบ Bet History (รองรับบอลสเต็ป/Mix Play) ---
       const betHtml = (Array.isArray(bets) && bets.length > 0) ? `
         <div class="table-container">
           <table class="details-table">
             <thead>
               <tr>
-                <th>Match / Time</th>
-                <th style="text-align:center;">Selection</th>
-                <th style="text-align:right;">Bet</th>
-                <th style="text-align:center;">Result</th>
+                <th>คู่แข่งขัน / เวลา</th>
+                <th style="text-align:center;">ตัวเลือก</th>
+                <th style="text-align:right;">ยอดเดิมพัน</th>
+                <th style="text-align:center;">ผลลัพธ์</th>
               </tr>
             </thead>
             <tbody>
               ${bets.map((bet: any) => {
                 const date = new Date(bet.created_at).toLocaleDateString('th-TH');
-                const time = new Date(bet.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-                const matchName = bet.match_name || `${bet.home_team} vs ${bet.away_team}`;
+                const isParlay = bet.items && bet.items.length > 0;
                 const resColor = bet.result === 'win' ? '#10b981' : (bet.result === 'loss' ? '#f43f5e' : '#94a3b8');
                 
+                let matchContent = "";
+                if (isParlay) {
+                    matchContent = `<div style="color:#1e40af; font-weight:900; margin-bottom:4px;">MIX PARLAY (${bet.items.length} คู่)</div>` +
+                    bet.items.map((item: any) => `
+                        <div style="font-size:11px; border-left:2px solid #127447; padding-left:5px; margin-bottom:3px;">
+                            <b>${item.home_team} vs ${item.away_team}</b><br/>
+                            <span style="color:#666;">ทาย: ${item.pick}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    matchContent = `<div style="font-weight:800;">${bet.home_team} vs ${bet.away_team}</div>`;
+                }
+
                 return `
                 <tr>
-                  <td><div style="font-weight:800;">${matchName}</div><div style="font-size:10px; color:#999;">${date} | ${time}</div></td>
-                  <td style="text-align:center;"><div style="background:#f0fdf4; border:1px solid #127447; color:#127447; padding:2px 4px; border-radius:4px; font-weight:900; font-size:10px;">${bet.pick || bet.selection || '-'}</div></td>
+                  <td>${matchContent}<div style="font-size:10px; color:#999; margin-top:4px;">${date}</div></td>
+                  <td style="text-align:center;">
+                    <div style="background:#f0fdf4; border:1px solid #127447; color:#127447; padding:2px 4px; border-radius:4px; font-weight:900; font-size:10px;">
+                        ${bet.pick || bet.selection || '-'}
+                    </div>
+                  </td>
                   <td style="text-align:right; font-weight:800;">฿${Number(bet.amount).toLocaleString()}</td>
-                  <td style="text-align:center;"><div style="background:${resColor}; color:white; padding:3px 6px; border-radius:6px; font-size:9px; font-weight:900; text-transform:uppercase;">${bet.status || bet.result}</div></td>
+                  <td style="text-align:center;">
+                    <div style="background:${resColor}; color:white; padding:3px 6px; border-radius:6px; font-size:9px; font-weight:900; text-transform:uppercase;">
+                        ${bet.status || bet.result}
+                    </div>
+                  </td>
                 </tr>`;
               }).join('')}
             </tbody>
           </table>
-        </div>` : '<p class="no-data">No betting history found.</p>';
+        </div>` : '<p class="no-data">ไม่มีประวัติการเดิมพัน</p>';
 
+      // --- 3. แสดง Modal ด้วย SweetAlert2 ---
       Swal.fire({
         title: `<div style="font-size:22px; font-weight:900; color:#127447;">USER INSPECTOR</div>`,
         width: '95%',
         showConfirmButton: true,
-        confirmButtonText: "CLOSE",
+        confirmButtonText: "ปิดหน้าต่าง",
         confirmButtonColor: "#127447",
         html: `
           <style>
@@ -112,8 +135,9 @@ const handleViewDetails = async (user: any) => {
             .details-table td { padding:10px; border-bottom:1px solid #f1f5f9; text-align:left; }
             .user-info-card { background:#f0fdf4; padding:15px; border-radius:15px; border:2px solid #127447; margin-bottom:15px; text-align:left; }
             .nav-tabs { display:flex; gap:5px; margin-bottom:10px; border-bottom:2px solid #f1f5f9; }
-            .tab-btn { flex:1; padding:10px; font-size:12px; font-weight:800; cursor:pointer; border:none; background:none; color:#94a3b8; }
+            .tab-btn { flex:1; padding:12px; font-size:12px; font-weight:800; cursor:pointer; border:none; background:none; color:#94a3b8; transition:0.3s; }
             .tab-btn.active { color:#127447; border-bottom:3px solid #127447; }
+            .no-data { padding:40px; text-align:center; color:#94a3b8; font-weight:bold; }
           </style>
           
           <div class="user-info-card">
@@ -122,15 +146,14 @@ const handleViewDetails = async (user: any) => {
           </div>
 
           <div class="nav-tabs">
-            <button id="tab-tx-btn" class="tab-btn active" onclick="window.switchTab('tx')">FINANCIALS</button>
-            <button id="tab-bet-btn" class="tab-btn" onclick="window.switchTab('bet')">BET HISTORY</button>
+            <button id="tab-tx-btn" class="tab-btn active" onclick="window.switchTab('tx')">ธุรกรรมการเงิน (เฉพาะคู่บอล)</button>
+            <button id="tab-bet-btn" class="tab-btn" onclick="window.switchTab('bet')">ประวัติเดิมพัน</button>
           </div>
 
           <div id="tab-tx-content">${txHtml}</div>
           <div id="tab-bet-content" style="display:none;">${betHtml}</div>
 
           <script>
-            // แก้ไข: ผูกฟังก์ชันไว้กับ window เพื่อให้ Swal เรียกเจอ
             window.switchTab = function(type) {
               const txBtn = document.getElementById('tab-tx-btn');
               const betBtn = document.getElementById('tab-bet-btn');
@@ -151,20 +174,19 @@ const handleViewDetails = async (user: any) => {
 
     } catch (err) {
       console.error(err);
-      Swal.fire("Error", "Could not fetch data", "error");
+      Swal.fire("Error", "ไม่สามารถโหลดข้อมูลได้", "error");
     }
   };
 
-  // ... (ส่วนที่เหลือของ component เหมือนเดิม)
   const handleCredit = async (user: any) => {
     const { value: amount } = await Swal.fire({
-      title: 'Adjust Balance',
+      title: 'ปรับเครดิต',
       input: 'number',
       inputLabel: `Username: ${user.username}`,
-      inputPlaceholder: 'Enter amount (e.g. 100 or -100)',
+      inputPlaceholder: 'ใส่จำนวนเงิน (เช่น 100 หรือ -100)',
       showCancelButton: true,
       confirmButtonColor: '#127447',
-      confirmButtonText: 'UPDATE'
+      confirmButtonText: 'ยืนยัน'
     });
 
     if (amount) {
@@ -174,34 +196,34 @@ const handleViewDetails = async (user: any) => {
           body: JSON.stringify({ amount: parseFloat(amount) }),
         });
         if (res.ok) {
-          Swal.fire("Success", "Balance updated successfully", "success");
+          Swal.fire("สำเร็จ", "ปรับเครดิตเรียบร้อยแล้ว", "success");
           mutate();
         }
       } catch (err) {
-        Swal.fire("Error", "Failed to update balance", "error");
+        Swal.fire("ผิดพลาด", "ไม่สามารถปรับเครดิตได้", "error");
       }
     }
   };
 
   const handleDeleteUser = async (user: any) => {
     const confirm = await Swal.fire({
-      title: 'Delete User?',
-      text: `You are about to remove ${user.username} from the system.`,
+      title: 'ลบผู้ใช้งาน?',
+      text: `คุณกำลังจะลบ ${user.username} ออกจากระบบ`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#f43f5e',
-      confirmButtonText: 'DELETE NOW'
+      confirmButtonText: 'ยืนยันการลบ'
     });
 
     if (confirm.isConfirmed) {
       try {
         const res = await apiFetch(`/admin/users/${user.id}`, { method: "DELETE" });
         if (res.ok) {
-          Swal.fire("Deleted", "User has been removed", "success");
+          Swal.fire("สำเร็จ", "ลบผู้ใช้งานเรียบร้อย", "success");
           mutate();
         }
       } catch (err) {
-        Swal.fire("Error", "Failed to delete user", "error");
+        Swal.fire("ผิดพลาด", "ไม่สามารถลบผู้ใช้งานได้", "error");
       }
     }
   };
@@ -223,7 +245,7 @@ const handleViewDetails = async (user: any) => {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
             <input 
               className="w-full bg-white border-none rounded-2xl py-4 pl-12 pr-6 shadow-sm focus:ring-2 focus:ring-[#127447] outline-none font-bold"
-              placeholder="Search by username or phone..."
+              placeholder="ค้นหาด้วยชื่อหรือเบอร์โทร..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -247,7 +269,7 @@ const handleViewDetails = async (user: any) => {
                 <div className="flex-1 min-w-0">
                   <h3 className="text-xl md:text-2xl font-black text-zinc-900 truncate uppercase">{user.username}</h3>
                   <div className="flex items-center gap-2 text-zinc-400 font-bold text-sm">
-                    <Phone size={14} /> {user.phone || "No phone number"}
+                    <Phone size={14} /> {user.phone || "ไม่มีเบอร์โทรศัพท์"}
                   </div>
                 </div>
               </div>

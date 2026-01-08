@@ -242,20 +242,16 @@ func GetUserTransactions(c *fiber.Ctx) error {
 
 	var results []TransactionWithMatch
 
-	// แก้ไข: ใช้ Left Join โดยเช็คว่าตารางชื่อ bet_slips และมีฟิลด์เชื่อมกัน
-	// หาก SQL พังจะตกไปที่การดึงข้อมูลแบบ Simple ด้านล่าง
+	// ใช้ INNER JOIN เพื่อกรองเอาเฉพาะรายการที่มีคู่บอลเท่านั้น
 	err := database.DB.Table("transactions").
 		Select("transactions.*, bet_slips.home_team, bet_slips.away_team").
-		Joins("LEFT JOIN bet_slips ON transactions.id = bet_slips.id").
+		Joins("INNER JOIN bet_slips ON transactions.id = bet_slips.id").
 		Where("transactions.user_id = ?", userID).
 		Order("transactions.created_at desc").
 		Scan(&results).Error
 
 	if err != nil {
-		// ถ้า Join พัง ให้ส่งแค่ข้อมูลพื้นฐาน (ป้องกัน 500 Error)
-		var simpleTxs []models.Transaction
-		database.DB.Where("user_id = ?", userID).Order("created_at desc").Find(&simpleTxs)
-		return c.Status(200).JSON(simpleTxs)
+		return c.Status(200).JSON([]interface{}{}) // ส่งอาเรย์ว่างถ้าไม่พบข้อมูล
 	}
 
 	return c.Status(200).JSON(results)
