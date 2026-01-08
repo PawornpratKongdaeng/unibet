@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import useSWR from "swr";
 import { apiFetch } from "@/lib/api";
 import Swal from "sweetalert2";
@@ -12,14 +12,43 @@ const fetcher = (url: string) =>
   apiFetch(url).then(async (res) => {
     if (!res.ok) throw new Error("Failed to fetch");
     const text = await res.text();
-    return text ? JSON.parse(text) : null; // ป้องกัน Error กรณี Body ว่าง
+    return text ? JSON.parse(text) : null;
   });
 
 export default function AdminUsersPage() {
   const [search, setSearch] = useState("");
   const { data: users, mutate, isLoading } = useSWR("/admin/users", fetcher);
 
-  // --- 1. ฟังก์ชันเพิ่มผู้ใช้ใหม่ ---
+  // --- 1. ลงทะเบียน Global Function สำหรับสลับ Tab ---
+  useEffect(() => {
+    (window as any).switchInspectorTab = (type: 'fin' | 'bet') => {
+      const finBtn = document.getElementById('t-fin');
+      const betBtn = document.getElementById('t-bet');
+      const finBox = document.getElementById('box-fin');
+      const betBox = document.getElementById('box-bet');
+
+      if (!finBtn || !betBtn || !finBox || !betBox) return;
+
+      if (type === 'fin') {
+        finBtn.classList.add('active');
+        betBtn.classList.remove('active');
+        finBox.style.display = 'block';
+        betBox.style.display = 'none';
+      } else {
+        betBtn.classList.add('active');
+        finBtn.classList.remove('active');
+        finBox.style.display = 'none';
+        betBox.style.display = 'block';
+      }
+    };
+
+    // Cleanup เมื่อออกจากหน้า
+    return () => {
+      delete (window as any).switchInspectorTab;
+    };
+  }, []);
+
+  // --- 2. ฟังก์ชันเพิ่มผู้ใช้ใหม่ ---
   const handleAddUser = async () => {
     const { value: formValues } = await Swal.fire({
       title: '<span style="font-weight:900; color:#127447;">ADD NEW MEMBER</span>',
@@ -63,7 +92,7 @@ export default function AdminUsersPage() {
     }
   };
 
-  // --- 2. ฟังก์ชันดูรายละเอียด (USER INSPECTOR - แก้ไขตามภาพ) ---
+  // --- 3. ฟังก์ชันดูรายละเอียด (USER INSPECTOR) ---
   const handleViewDetails = async (user: any) => {
     Swal.fire({
       title: "กำลังดึงข้อมูล...",
@@ -80,7 +109,6 @@ export default function AdminUsersPage() {
       const transactions = txRes && txRes.ok ? await txRes.json() : [];
       const bets = betRes && betRes.ok ? await betRes.json() : [];
 
-      // Render Financials Table
       const txHtml = (Array.isArray(transactions) && transactions.length > 0) ? `
         <div class="table-scroll">
           <table class="insp-table">
@@ -94,12 +122,10 @@ export default function AdminUsersPage() {
             </thead>
             <tbody>
               ${transactions.map((tx: any) => {
-                const date = new Date(tx.created_at).toLocaleDateString('th-TH');
-                const time = new Date(tx.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
                 const isPlus = tx.type.toLowerCase() === 'payout' || tx.type.toLowerCase() === 'deposit';
                 return `
                 <tr>
-                  <td><div class="bold">${date}</div><div class="small-grey">${time}</div></td>
+                  <td><div class="bold">${new Date(tx.created_at).toLocaleDateString('th-TH')}</div><div class="small-grey">${new Date(tx.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div></td>
                   <td>
                     <div class="bold" style="color:${isPlus ? '#10b981' : '#f43f5e'}">${tx.type.toUpperCase()}</div>
                     ${tx.home_team ? `<div class="small-green">⚽ ${tx.home_team} vs ${tx.away_team}</div>` : ''}
@@ -112,7 +138,6 @@ export default function AdminUsersPage() {
           </table>
         </div>` : '<div class="empty-box">ไม่พบข้อมูลธุรกรรม</div>';
 
-      // Render Bet History Table
       const betHtml = (Array.isArray(bets) && bets.length > 0) ? `
         <div class="table-scroll">
           <table class="insp-table">
@@ -126,13 +151,13 @@ export default function AdminUsersPage() {
             </thead>
             <tbody>
               ${bets.map((bet: any) => {
-                const resultColor = bet.result === 'win' ? '#10b981' : (bet.result === 'loss' ? '#f43f5e' : '#94a3b8');
+                const resColor = bet.result === 'win' ? '#10b981' : (bet.result === 'loss' ? '#f43f5e' : '#94a3b8');
                 return `
                 <tr>
                   <td><div class="bold">${bet.home_team} vs ${bet.away_team}</div><div class="small-grey">${new Date(bet.created_at).toLocaleDateString('th-TH')}</div></td>
                   <td style="text-align:center;"><span class="pick-tag">${bet.pick || '-'}</span></td>
                   <td style="text-align:right;" class="bold">฿${Number(bet.amount).toLocaleString()}</td>
-                  <td style="text-align:center;"><span class="res-tag" style="background:${resultColor}">${(bet.result || 'PENDING').toUpperCase()}</span></td>
+                  <td style="text-align:center;"><span class="res-tag" style="background:${resColor}">${(bet.result || 'PENDING').toUpperCase()}</span></td>
                 </tr>`;
               }).join('')}
             </tbody>
@@ -151,19 +176,19 @@ export default function AdminUsersPage() {
             .info-label { font-size:11px; font-weight:900; color:#127447; text-transform:uppercase; margin-bottom:2px; }
             .info-value { font-size:28px; font-weight:900; color:#127447; }
             .tab-wrapper { display:flex; gap:10px; margin-bottom:15px; border-bottom: 2px solid #eee; }
-            .tab-item { flex:1; padding:12px; font-weight:900; cursor:pointer; border:none; background:none; color:#bbb; text-transform:uppercase; font-size:13px; transition:0.3s; }
+            .tab-item { flex:1; padding:12px; font-weight:900; cursor:pointer; border:none; background:none; color:#bbb; text-transform:uppercase; font-size:13px; }
             .tab-item.active { color:#127447; border-bottom: 4px solid #127447; }
             .table-scroll { max-height:450px; overflow-y:auto; border-radius:10px; }
             .insp-table { width:100%; border-collapse:collapse; font-size:13px; text-align:left; }
-            .insp-table th { background:#f9f9f9; padding:12px; color:#777; font-size:10px; text-transform:uppercase; position:sticky; top:0; z-index:1; border-bottom:1px solid #eee; }
-            .insp-table td { padding:12px; border-bottom:1px solid #f5f5f5; vertical-align:middle; }
+            .insp-table th { background:#f9f9f9; padding:12px; color:#777; font-size:10px; text-transform:uppercase; position:sticky; top:0; z-index:1; }
+            .insp-table td { padding:12px; border-bottom:1px solid #f5f5f5; }
             .bold { font-weight:800; color:#333; }
-            .bold-large { font-weight:900; font-size:15px; color:#222; }
+            .bold-large { font-weight:900; font-size:15px; }
             .small-grey { font-size:10px; color:#999; }
             .small-green { font-size:11px; color:#127447; font-weight:700; margin-top:3px; }
             .badge-status { font-size:10px; font-weight:800; color:#666; background:#eee; padding:3px 8px; border-radius:5px; }
             .pick-tag { background:#f0fdf4; border:1px solid #127447; color:#127447; padding:2px 8px; border-radius:5px; font-weight:900; font-size:11px; }
-            .res-tag { color:white; padding:4px 10px; border-radius:6px; font-size:10px; font-weight:900; display:inline-block; min-width:60px; }
+            .res-tag { color:white; padding:4px 10px; border-radius:6px; font-size:10px; font-weight:900; display:inline-block; min-width:65px; }
             .empty-box { padding:50px; text-align:center; font-weight:bold; color:#ccc; }
           </style>
           
@@ -173,30 +198,12 @@ export default function AdminUsersPage() {
           </div>
 
           <div class="tab-wrapper">
-            <button id="t-fin" class="tab-item active" onclick="window.switchInspectorTab('fin')">FINANCIALS</button>
-            <button id="t-bet" class="tab-item" onclick="window.switchInspectorTab('bet')">BET HISTORY</button>
+            <button id="t-fin" class="tab-item active" onclick="switchInspectorTab('fin')">FINANCIALS</button>
+            <button id="t-bet" class="tab-item" onclick="switchInspectorTab('bet')">BET HISTORY</button>
           </div>
 
           <div id="box-fin">${txHtml}</div>
           <div id="box-bet" style="display:none;">${betHtml}</div>
-
-          <script>
-            // ย้ายฟังก์ชันมาผูกกับ window เพื่อป้องกัน Scope Error
-            window.switchInspectorTab = function(type) {
-              const finT = document.getElementById('t-fin');
-              const betT = document.getElementById('t-bet');
-              const finB = document.getElementById('box-fin');
-              const betB = document.getElementById('box-bet');
-              
-              if(type === 'fin') {
-                finT.classList.add('active'); betT.classList.remove('active');
-                finB.style.display = 'block'; betB.style.display = 'none';
-              } else {
-                betT.classList.add('active'); finT.classList.remove('active');
-                betB.style.display = 'block'; finB.style.display = 'none';
-              }
-            }
-          </script>
         `,
         customClass: { popup: 'rounded-[2rem]' }
       });
@@ -205,13 +212,13 @@ export default function AdminUsersPage() {
     }
   };
 
-  // --- 3. ฟังก์ชันปรับเครดิต ---
+  // --- 4. ฟังก์ชันปรับเครดิต ---
   const handleCredit = async (user: any) => {
     const { value: amount } = await Swal.fire({
       title: '<span style="font-weight:900;">ADJUST CREDIT</span>',
       input: 'number',
       inputLabel: `Username: ${user.username}`,
-      inputPlaceholder: 'Enter amount (e.g. 100 or -50)',
+      inputPlaceholder: 'ใส่จำนวนเงิน...',
       showCancelButton: true,
       confirmButtonColor: '#127447',
       confirmButtonText: 'CONFIRM',
