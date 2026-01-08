@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import useSWR from "swr";
 import { apiFetch } from "@/lib/api";
 import Swal from "sweetalert2";
@@ -15,7 +15,34 @@ export default function AdminUsersPage() {
   
   useInspectorTab();
 
-  // --- 1. เพิ่มผู้ใช้ใหม่ ---
+  // --- 0. Filtering Logic ---
+  const filteredUsers = Array.isArray(users) 
+    ? users.filter((u: any) => u.username.toLowerCase().includes(search.toLowerCase()))
+    : [];
+
+  // --- 1. Global Tab Switcher for SweetAlert ---
+  useEffect(() => {
+    (window as any).switchInspectorTab = (tab: 'fin' | 'bet') => {
+      const finBox = document.getElementById('box-fin');
+      const betBox = document.getElementById('box-bet');
+      const finBtn = document.getElementById('t-fin');
+      const betBtn = document.getElementById('t-bet');
+
+      if (tab === 'fin') {
+        finBox?.setAttribute('style', 'display: block');
+        betBox?.setAttribute('style', 'display: none');
+        finBtn?.classList.add('active');
+        betBtn?.classList.remove('active');
+      } else {
+        finBox?.setAttribute('style', 'display: none');
+        betBox?.setAttribute('style', 'display: block');
+        finBtn?.classList.remove('active');
+        betBtn?.classList.add('active');
+      }
+    };
+  }, []);
+
+  // --- 2. Action Handlers ---
   const handleAddUser = async () => {
     const { value: formValues } = await Swal.fire({
       title: '<span class="text-2xl font-black text-[#127447]">ADD NEW MEMBER</span>',
@@ -43,7 +70,6 @@ export default function AdminUsersPage() {
     }
   };
 
-  // --- 2. ปรับเครดิต ---
   const handleCredit = async (user: any) => {
     const { value: amount } = await Swal.fire({
       title: 'ADJUST CREDIT',
@@ -64,7 +90,6 @@ export default function AdminUsersPage() {
     }
   };
 
-  // --- 3. ลบผู้ใช้ ---
   const handleDelete = async (id: string) => {
     const result = await Swal.fire({
       title: 'Are you sure?',
@@ -81,7 +106,6 @@ export default function AdminUsersPage() {
     }
   };
 
-  // --- 4. ดูรายละเอียด (Inspector) ---
   const handleViewDetails = async (user: any) => {
     Swal.fire({
       title: "กำลังดึงข้อมูล...",
@@ -90,115 +114,25 @@ export default function AdminUsersPage() {
     });
 
     try {
-      // 1. ดึงข้อมูลแบบตรวจสอบสถานะ Response
       const [txRes, betRes] = await Promise.all([
-        apiFetch(`/admin/users/${user.id}/transactions`).catch(e => { console.error("TX Error:", e); return null; }),
-        apiFetch(`/admin/users/${user.id}/bets`).catch(e => { console.error("Bet Error:", e); return null; })
+        apiFetch(`/admin/users/${user.id}/transactions`),
+        apiFetch(`/admin/users/${user.id}/bets`)
       ]);
 
-      // 2. ฟังก์ชันช่วย Parse JSON ป้องกัน Error กรณี Body ว่างหรือไม่ใช่ JSON
-      const safeParse = async (res: Response | null) => {
-        if (!res || !res.ok) return [];
-        try {
-          const text = await res.text();
-          return text ? JSON.parse(text) : [];
-        } catch (e) {
-          console.error("JSON Parse Error:", e);
-          return [];
-        }
-      };
+      const transactions = txRes.ok ? await txRes.json() : [];
+      const bets = betRes.ok ? await betRes.json() : [];
 
-      const transactions = await safeParse(txRes);
-      const bets = await safeParse(betRes);
-
-      // --- Debug Log: ตรวจดูว่าข้อมูลที่มาจริง ๆ หน้าตาเป็นอย่างไร ---
-      console.log("Fetched Transactions:", transactions);
-      console.log("Fetched Bets:", bets);
-
-      // 3. ตรวจสอบว่าข้อมูลเป็น Array ก่อนใช้ .map()
-      const txData = Array.isArray(transactions) ? transactions : [];
-      const betData = Array.isArray(bets) ? bets : [];
-
-      const txHtml = txData.length > 0 ? `
-        <div class="table-scroll">
-          <table class="insp-table">
-            <thead>
-              <tr>
-                <th style="width:25%">Date/Time</th>
-                <th style="width:40%">Type / Match</th>
-                <th style="text-align:right;">Amount</th>
-                <th style="text-align:center;">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${txData.map((tx: any) => {
-                const dateObj = new Date(tx.created_at);
-                const isPlus = tx.type?.toLowerCase() === 'payout' || tx.type?.toLowerCase() === 'deposit';
-                return `
-                <tr>
-                  <td><div class="bold">${dateObj.toLocaleDateString('th-TH')}</div><div class="small-grey">${dateObj.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div></td>
-                  <td>
-                    <div class="bold" style="color:${isPlus ? '#10b981' : '#f43f5e'}">${(tx.type || 'N/A').toUpperCase()}</div>
-                    ${tx.home_team ? `<div class="small-green">⚽ ${tx.home_team} vs ${tx.away_team}</div>` : ''}
-                  </td>
-                  <td style="text-align:right;" class="bold-large">฿${Number(tx.amount || 0).toLocaleString()}</td>
-                  <td style="text-align:center;"><span class="badge-status">${(tx.status || 'PENDING').toUpperCase()}</span></td>
-                </tr>`;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>` : '<div class="empty-box">ไม่พบข้อมูลธุรกรรม</div>';
-
-      const betHtml = betData.length > 0 ? `
-        <div class="table-scroll">
-          <table class="insp-table">
-            <thead>
-              <tr>
-                <th>Match</th>
-                <th style="text-align:center;">Pick</th>
-                <th style="text-align:right;">Wager</th>
-                <th style="text-align:center;">Result</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${betData.map((bet: any) => {
-                const resColor = bet.result === 'win' ? '#10b981' : (bet.result === 'loss' ? '#f43f5e' : '#94a3b8');
-                return `
-                <tr>
-                  <td><div class="bold">${bet.home_team || 'Unknown'} vs ${bet.away_team || 'Unknown'}</div><div class="small-grey">${new Date(bet.created_at).toLocaleDateString('th-TH')}</div></td>
-                  <td style="text-align:center;"><span class="pick-tag">${bet.pick || '-'}</span></td>
-                  <td style="text-align:right;" class="bold">฿${Number(bet.amount || 0).toLocaleString()}</td>
-                  <td style="text-align:center;"><span class="res-tag" style="background:${resColor}">${(bet.result || 'PENDING').toUpperCase()}</span></td>
-                </tr>`;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>` : '<div class="empty-box">ไม่พบประวัติการเดิมพัน</div>';
-
-      // 4. แสดงผล Inspector
       Swal.fire({
-        title: `<div class="insp-title">USER INSPECTOR</div>`,
-        width: '900px',
+        title: `<div class="text-xs font-black text-zinc-400 uppercase tracking-widest">User Inspector</div>`,
+        width: '800px',
         confirmButtonText: "CLOSE",
         confirmButtonColor: "#127447",
-        html: `
-          <div class="user-info-card">
-            <div class="info-label">Username: ${user.username}</div>
-            <div class="info-value">฿${Number(user.credit || 0).toLocaleString()}</div>
-          </div>
-          <div class="tab-wrapper">
-            <button id="t-fin" class="tab-item active" onclick="switchInspectorTab('fin')">FINANCIALS</button>
-            <button id="t-bet" class="tab-item" onclick="switchInspectorTab('bet')">BET HISTORY</button>
-          </div>
-          <div id="box-fin">${txHtml}</div>
-          <div id="box-bet" style="display:none;">${betHtml}</div>
-        `,
+        html: generateInspectorHTML(user, transactions, bets),
         customClass: { popup: 'rounded-[2rem]' }
       });
 
     } catch (err: any) {
-      console.error("Inspector Error Details:", err);
-      Swal.fire("Error", `เกิดข้อผิดพลาด: ${err.message}`, "error");
+      Swal.fire("Error", "Failed to load user details", "error");
     }
   };
 
@@ -233,10 +167,10 @@ export default function AdminUsersPage() {
             <UserCard 
               key={user.id} 
               user={user} 
-              onView={handleViewDetails} 
-              onCredit={handleCredit}
-              onDelete={handleDelete}
-              onBan={() => {/* Logic for Ban */}}
+              onView={() => handleViewDetails(user)} 
+              onCredit={() => handleCredit(user)}
+              onDelete={() => handleDelete(user.id)}
+              onBan={() => {}}
             />
           ))
         )}
@@ -251,12 +185,24 @@ function buildTransactionRows(txs: any[]) {
   if (!txs.length) return '<tr><td colspan="4" class="p-10 text-center text-zinc-400 font-bold">No transactions found</td></tr>';
   return txs.map(tx => `
     <tr class="border-b border-zinc-50">
-      <td class="p-4 text-xs font-bold text-zinc-500">${new Date(tx.created_at).toLocaleString()}</td>
-      <td class="p-4 font-black text-[#127447] uppercase">${tx.type}</td>
+      <td class="p-4 text-xs font-bold text-zinc-500">${new Date(tx.created_at).toLocaleString('th-TH')}</td>
+      <td class="p-4 font-black text-[#127447] uppercase text-xs">${tx.type}</td>
       <td class="p-4 font-black text-right">฿${Number(tx.amount).toLocaleString()}</td>
       <td class="p-4 text-center"><span class="bg-zinc-100 px-2 py-1 rounded text-[10px] font-black">${tx.status}</span></td>
     </tr>
   `).join('');
+}
+
+function buildBetRows(bets: any[]) {
+    if (!bets.length) return '<tr><td colspan="4" class="p-10 text-center text-zinc-400 font-bold">No bets found</td></tr>';
+    return bets.map(bet => `
+      <tr class="border-b border-zinc-50 text-xs">
+        <td class="p-4 font-bold">${bet.home_team} vs ${bet.away_team}</td>
+        <td class="p-4 text-center font-black">${bet.pick}</td>
+        <td class="p-4 text-right font-black">฿${Number(bet.amount).toLocaleString()}</td>
+        <td class="p-4 text-center font-black ${bet.result === 'win' ? 'text-green-500' : 'text-red-500'}">${bet.result?.toUpperCase() || 'PENDING'}</td>
+      </tr>
+    `).join('');
 }
 
 function generateInspectorHTML(user: any, txs: any[], bets: any[]) {
@@ -264,15 +210,18 @@ function generateInspectorHTML(user: any, txs: any[], bets: any[]) {
     <style>
       .insp-table { width: 100%; border-collapse: collapse; text-align: left; }
       .insp-table th { background: #f8f9fa; padding: 12px; font-size: 10px; font-weight: 900; color: #999; text-transform: uppercase; }
-      .tab-item { transition: all 0.3s; border-bottom: 4px solid transparent; }
+      .tab-item { transition: all 0.3s; border-bottom: 4px solid transparent; color: #a1a1aa; }
       .tab-item.active { color: #127447; border-color: #127447; }
     </style>
     <div class="bg-[#f0fdf4] border-2 border-[#127447] rounded-3xl p-6 mb-6 flex justify-between items-center">
-      <div>
+      <div class="text-left">
         <p class="text-[10px] font-black text-[#127447] uppercase">Current Balance</p>
         <h2 class="text-4xl font-black text-[#127447]">฿${Number(user.credit || 0).toLocaleString()}</h2>
       </div>
-      <div class="text-right text-[#127447] font-bold">UID: ${user.id.slice(0,8)}</div>
+      <div class="text-right">
+         <p class="text-[10px] font-black text-zinc-400 uppercase">Username</p>
+         <div class="text-[#127447] font-black">${user.username}</div>
+      </div>
     </div>
     <div class="flex gap-6 border-b-2 border-zinc-100 mb-4">
       <button id="t-fin" class="tab-item active flex-1 py-4 font-black text-xs uppercase" onclick="switchInspectorTab('fin')">Financials</button>
@@ -285,7 +234,10 @@ function generateInspectorHTML(user: any, txs: any[], bets: any[]) {
       </table>
     </div>
     <div id="box-bet" style="display:none" class="max-h-[400px] overflow-y-auto">
-      <p class="p-10 text-center font-bold text-zinc-300">Bet history data implementation...</p>
+       <table class="insp-table">
+        <thead><tr><th>Match</th><th style="text-align:center">Pick</th><th style="text-align:right">Amount</th><th style="text-align:center">Result</th></tr></thead>
+        <tbody>${buildBetRows(bets)}</tbody>
+      </table>
     </div>
   `;
 }
