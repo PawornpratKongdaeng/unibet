@@ -229,10 +229,11 @@ func RequestWithdraw(c *fiber.Ctx) error {
 		"new_credit": user.Credit,
 	})
 }
+
+// ในไฟล์ handlers/admin_handler.go
 func GetUserTransactions(c *fiber.Ctx) error {
 	userID := c.Params("id")
 
-	// สร้าง anonymous struct เพื่อรวมข้อมูล Transaction + ชื่อทีมคู่บอล
 	type TransactionWithMatch struct {
 		models.Transaction
 		HomeTeam string `json:"home_team"`
@@ -241,32 +242,37 @@ func GetUserTransactions(c *fiber.Ctx) error {
 
 	var results []TransactionWithMatch
 
-	// ใช้ Joins เพื่อดึงชื่อทีมมาจากตาราง bet_slips
-	// (สมมติว่าตาราง transactions ของคุณมีฟิลด์ bet_id หรือ link กับ id ของบิล)
+	// แก้ไข: ใช้ Left Join โดยเช็คว่าตารางชื่อ bet_slips และมีฟิลด์เชื่อมกัน
+	// หาก SQL พังจะตกไปที่การดึงข้อมูลแบบ Simple ด้านล่าง
 	err := database.DB.Table("transactions").
 		Select("transactions.*, bet_slips.home_team, bet_slips.away_team").
-		Joins("LEFT JOIN bet_slips ON transactions.bet_id = bet_slips.id").
+		Joins("LEFT JOIN bet_slips ON transactions.id = bet_slips.id").
 		Where("transactions.user_id = ?", userID).
 		Order("transactions.created_at desc").
 		Scan(&results).Error
 
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถดึงข้อมูลได้"})
+		// ถ้า Join พัง ให้ส่งแค่ข้อมูลพื้นฐาน (ป้องกัน 500 Error)
+		var simpleTxs []models.Transaction
+		database.DB.Where("user_id = ?", userID).Order("created_at desc").Find(&simpleTxs)
+		return c.Status(200).JSON(simpleTxs)
 	}
 
 	return c.Status(200).JSON(results)
 }
+
+// --- ส่วนของดึงประวัติการเดิมพัน (Bet History) ---
 func GetUserBets(c *fiber.Ctx) error {
 	userID := c.Params("id")
-	var bets []models.BetSlip // หรือชื่อ Model บิลของคุณ
+	var bets []models.BetSlip
 
-	// ดึงข้อมูลจากตาราง bet_slips โดยตรง (ซึ่งมีฟิลด์ HomeTeam, AwayTeam อยู่แล้ว)
+	// ดึงจากตาราง bet_slips โดยตรง
 	err := database.DB.Where("user_id = ?", userID).
 		Order("created_at desc").
 		Find(&bets).Error
 
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "คึงข้อมูลการเดิมพันไม่สำเร็จ"})
+		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถดึงข้อมูลเดิมพันได้"})
 	}
 
 	return c.Status(200).JSON(bets)
