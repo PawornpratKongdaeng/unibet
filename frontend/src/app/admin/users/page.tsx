@@ -19,115 +19,116 @@ export default function AdminUsersPage() {
   const { data: users, mutate, isLoading } = useSWR("/admin/users", fetcher);
 
   // ✅ ฟังก์ชันหลัก: ดูรายละเอียด (รองรับ Tabs: ประวัติเงิน / ประวัติเดิมพัน)
+  // ✅ 1. ดูรายละเอียด (ดึงข้อมูล Transaction และ Bet History)
   const handleViewDetails = async (user: any) => {
-    Swal.fire({ title: "กำลังดึงข้อมูล...", didOpen: () => Swal.showLoading() });
+    Swal.fire({
+      title: "กำลังดึงข้อมูล...",
+      didOpen: () => Swal.showLoading(),
+    });
 
     try {
+      // ดึงข้อมูลธุรกรรม และ ข้อมูลการเดิมพันพร้อมกัน
       const [txRes, betRes] = await Promise.all([
         apiFetch(`/admin/users/${user.id}/transactions`),
-        apiFetch(`/admin/users/${user.id}/bets`)
+        apiFetch(`/admin/users/${user.id}/bets`) // สมมติว่านี่คือ Endpoint สำหรับประวัติการแทง
       ]);
 
       const transactions = await txRes.json();
       const bets = await betRes.json();
 
-      // 💰 HTML: ตารางธุรกรรมการเงิน
-      const txTableHtml = transactions.length > 0 ? `
-        <div class="table-container">
-          <table style="width: 100%; min-width: 450px; font-size: 12px; border-collapse: collapse;">
-            <thead style="background: #f8f9fa; position: sticky; top: 0;">
+      // 💰 ส่วนของ HTML ตารางธุรกรรม (ฝาก/ถอน)
+      const txHtml = transactions.length > 0 ? `
+        <div class="table-scroll-container">
+          <table class="details-table">
+            <thead>
               <tr>
-                <th style="padding: 10px; text-align: left;">ว/ด/ย</th>
-                <th style="padding: 10px; text-align: left;">ประเภท</th>
-                <th style="padding: 10px; text-align: right;">จำนวนเงิน</th>
-                <th style="padding: 10px; text-align: center;">สถานะ</th>
+                <th>วันที่</th>
+                <th>ประเภท</th>
+                <th style="text-align: right;">จำนวน</th>
+                <th style="text-align: center;">สถานะ</th>
               </tr>
             </thead>
             <tbody>
               ${transactions.map((tx: any) => `
-                <tr style="border-bottom: 1px solid #eee;">
-                  <td style="padding: 10px;">${new Date(tx.created_at).toLocaleDateString('th-TH')}</td>
-                  <td style="padding: 10px; font-weight: 700; color: ${tx.type === 'deposit' ? '#10b981' : '#f43f5e'};">
+                <tr>
+                  <td>${new Date(tx.created_at).toLocaleDateString('th-TH')}</td>
+                  <td style="color: ${tx.type === 'deposit' ? '#10b981' : '#f43f5e'}; font-weight: 700;">
                     ${tx.type.toUpperCase()}
                   </td>
-                  <td style="padding: 10px; text-align: right; font-weight: 800;">฿${Number(tx.amount).toLocaleString()}</td>
-                  <td style="padding: 10px; text-align: center;">
-                    <span style="font-size: 10px; font-weight: 700; color: ${tx.status === 'approved' ? '#10b981' : '#94a3b8'};">
-                      ${tx.status.toUpperCase()}
-                    </span>
-                  </td>
+                  <td style="text-align: right; font-weight: 800;">฿${Number(tx.amount).toLocaleString()}</td>
+                  <td style="text-align: center; font-size: 10px;">${tx.status.toUpperCase()}</td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
-        </div>` : '<p style="padding: 20px; color: #999;">ไม่พบประวัติการเงิน</p>';
+        </div>` : `<p class="no-data">ไม่พบรายการธุรกรรม</p>`;
 
-      // 🏆 HTML: ตารางประวัติการเดิมพัน (Win/Loss)
-      const betTableHtml = bets.length > 0 ? `
-        <div class="table-container">
-          <table style="width: 100%; min-width: 450px; font-size: 12px; border-collapse: collapse;">
-            <thead style="background: #f8f9fa; position: sticky; top: 0;">
+      // 🏆 ส่วนของ HTML ประวัติการเดิมพัน (แพ้/ชนะ)
+      const betHtml = bets.length > 0 ? `
+        <div class="table-scroll-container">
+          <table class="details-table">
+            <thead>
               <tr>
-                <th style="padding: 10px; text-align: left;">คู่เดิมพัน</th>
-                <th style="padding: 10px; text-align: center;">ฝั่งที่เลือก</th>
-                <th style="padding: 10px; text-align: right;">เดิมพัน</th>
-                <th style="padding: 10px; text-align: center;">ผลลัพธ์</th>
+                <th>คู่เดิมพัน</th>
+                <th style="text-align: center;">เลือก</th>
+                <th style="text-align: right;">เดิมพัน</th>
+                <th style="text-align: center;">ผลลัพธ์</th>
               </tr>
             </thead>
             <tbody>
               ${bets.map((bet: any) => {
-                const color = bet.result === 'win' ? '#10b981' : (bet.result === 'loss' ? '#f43f5e' : '#64748b');
+                const isWin = bet.result === 'win';
+                const statusColor = isWin ? '#10b981' : (bet.result === 'loss' ? '#f43f5e' : '#94a3b8');
                 return `
-                <tr style="border-bottom: 1px solid #eee;">
-                  <td style="padding: 10px;">
+                <tr>
+                  <td>
                     <div style="font-weight: 800;">${bet.match_name}</div>
                     <div style="font-size: 10px; color: #999;">${new Date(bet.created_at).toLocaleString('th-TH')}</div>
                   </td>
-                  <td style="padding: 10px; text-align: center; font-weight: 700;">${bet.selection}</td>
-                  <td style="padding: 10px; text-align: right; font-weight: 800;">฿${Number(bet.amount).toLocaleString()}</td>
-                  <td style="padding: 10px; text-align: center;">
-                    <b style="color: ${color}; text-transform: uppercase;">${bet.result}</b>
+                  <td style="text-align: center;">${bet.selection}</td>
+                  <td style="text-align: right; font-weight: 800;">฿${Number(bet.amount).toLocaleString()}</td>
+                  <td style="text-align: center;">
+                    <span style="background: ${statusColor}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 900;">
+                      ${bet.result.toUpperCase()}
+                    </span>
                   </td>
                 </tr>`;
               }).join('')}
             </tbody>
           </table>
-        </div>` : '<p style="padding: 20px; color: #999;">ไม่พบประวัติการเดิมพัน</p>';
+        </div>` : `<p class="no-data">ไม่พบประวัติการเดิมพัน</p>`;
 
-      // 🚀 แสดงผลด้วย Swal
+      // แสดงผลใน SweetAlert
       Swal.fire({
-        title: `<div style="font-size: 22px; font-weight: 900; color: #127447; italic">ADMIN INSPECTOR</div>`,
+        title: `<span style="font-weight: 900; color: #127447;">USER ACTIVITY LOG</span>`,
         width: '95%',
+        confirmButtonColor: "#127447",
         html: `
           <style>
-            .table-container { max-height: 350px; overflow: auto; border: 1px solid #eee; border-radius: 12px; margin-top: 10px; }
-            .user-info-card { background: #f0fdf4; padding: 20px; border-radius: 20px; border: 2px solid #127447; margin-bottom: 20px; text-align: left; }
-            .nav-tabs { display: flex; gap: 10px; margin-bottom: 15px; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px; }
-            .tab-btn { padding: 8px 16px; border-radius: 10px; font-size: 12px; font-weight: 800; cursor: pointer; border: none; background: #f1f5f9; color: #64748b; }
-            .tab-btn.active { background: #127447; color: white; }
+            .table-scroll-container { max-height: 250px; overflow-y: auto; border: 1px solid #eee; border-radius: 12px; margin-bottom: 15px; }
+            .details-table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+            .details-table th { background: #f8f9fa; padding: 10px; position: sticky; top: 0; z-index: 1; }
+            .details-table td { padding: 10px; border-bottom: 1px solid #f8f8f8; }
+            .section-title { font-size: 11px; font-weight: 900; color: #aaa; text-transform: uppercase; margin-bottom: 8px; text-align: left; display: flex; align-items: center; gap: 5px; }
+            .no-data { padding: 20px; text-align: center; color: #ccc; font-size: 12px; }
           </style>
-          
-          <div class="user-info-card">
-            <div style="font-size: 12px; color: #127447; font-weight: 800; text-transform: uppercase;">Member Account</div>
-            <div style="font-size: 24px; font-weight: 900; color: #111;">${user.username}</div>
-            <div style="font-size: 28px; font-weight: 900; color: #127447; margin-top: 5px;">฿${Number(user.credit || 0).toLocaleString()}</div>
-          </div>
 
-          <div class="nav-tabs">
-            <button class="tab-btn active" onclick="document.getElementById('bet-sec').style.display='none'; document.getElementById('tx-sec').style.display='block'; this.classList.add('active'); this.nextElementSibling.classList.remove('active');">ธุรกรรมเงิน</button>
-            <button class="tab-btn" onclick="document.getElementById('tx-sec').style.display='none'; document.getElementById('bet-sec').style.display='block'; this.classList.add('active'); this.previousElementSibling.classList.remove('active');">ประวัติเดิมพัน</button>
-          </div>
+          <div style="text-align: left;">
+            <div style="background: #f0fdf4; padding: 15px; border-radius: 15px; border: 1px dashed #127447; margin-bottom: 20px;">
+              <span style="font-size: 12px; color: #666;">Username:</span> <b style="font-size: 16px;">${user.username}</b><br/>
+              <span style="font-size: 12px; color: #666;">ยอดเงินปัจจุบัน:</span> <b style="font-size: 18px; color: #127447;">฿${Number(user.credit || 0).toLocaleString()}</b>
+            </div>
 
-          <div id="tx-sec">${txTableHtml}</div>
-          <div id="bet-sec" style="display:none;">${betTableHtml}</div>
+            <div class="section-title">🏆 ประวัติการเดิมพัน (Win/Loss)</div>
+            ${betHtml}
+
+            <div class="section-title">💰 ประวัติการเงิน (Transactions)</div>
+            ${txHtml}
+          </div>
         `,
-        confirmButtonText: "DONE",
-        confirmButtonColor: "#127447",
-        customClass: { popup: 'rounded-[2.5rem]', confirmButton: 'rounded-xl px-10 py-3 font-black' }
       });
-
     } catch (err) {
-      Swal.fire("Error", "เกิดข้อผิดพลาดในการดึงข้อมูล", "error");
+      Swal.fire("Error", "ไม่สามารถดึงข้อมูลกิจกรรมผู้ใช้ได้", "error");
     }
   };
 
