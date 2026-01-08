@@ -59,7 +59,8 @@ func SetupRoutes(app *fiber.App) {
 		admin.Get("/transactions/history", handlers.GetTransactionHistory)
 		admin.Post("/transactions/approve/:id", handlers.ApproveTransaction)
 		admin.Post("/transactions/reject/:id", handlers.RejectTransaction)
-		admin.Get("/users/:id/transactions", handlers.GetUserTransactions) // ✅ ถูก (รูปแบบ Fiber)
+		admin.Get("/users/:id/transactions", handlers.GetUserTransactions)
+		admin.Get("/users/:id/bets", handlers.GetUserBets) // ✅ ถูก (รูปแบบ Fiber)
 
 		// System Configuration
 		admin.Put("/config/bank", handlers.UpdateAdminBank)

@@ -231,20 +231,43 @@ func RequestWithdraw(c *fiber.Ctx) error {
 }
 func GetUserTransactions(c *fiber.Ctx) error {
 	userID := c.Params("id")
-	var transactions []models.Transaction
 
-	// ดึงข้อมูลพร้อมเรียงจากใหม่ไปเก่า (Order by created_at DESC)
-	// ข้อมูล CreatedAt, UpdatedAt จะถูกดึงออกมาโดยอัตโนมัติจากโครงสร้าง Model
-	result := database.DB.Where("user_id = ?", userID).
-		Order("created_at desc").
-		Find(&transactions)
-
-	if result.Error != nil {
-		return c.Status(500).JSON(fiber.Map{
-			"error": "ไม่สามารถดึงข้อมูลประวัติได้",
-		})
+	// สร้าง anonymous struct เพื่อรวมข้อมูล Transaction + ชื่อทีมคู่บอล
+	type TransactionWithMatch struct {
+		models.Transaction
+		HomeTeam string `json:"home_team"`
+		AwayTeam string `json:"away_team"`
 	}
 
-	// ส่งค่ากลับไป (ตัว JSON จะมีฟิลด์ created_at มาให้โดยอัตโนมัติ)
-	return c.Status(200).JSON(transactions)
+	var results []TransactionWithMatch
+
+	// ใช้ Joins เพื่อดึงชื่อทีมมาจากตาราง bet_slips
+	// (สมมติว่าตาราง transactions ของคุณมีฟิลด์ bet_id หรือ link กับ id ของบิล)
+	err := database.DB.Table("transactions").
+		Select("transactions.*, bet_slips.home_team, bet_slips.away_team").
+		Joins("LEFT JOIN bet_slips ON transactions.bet_id = bet_slips.id").
+		Where("transactions.user_id = ?", userID).
+		Order("transactions.created_at desc").
+		Scan(&results).Error
+
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถดึงข้อมูลได้"})
+	}
+
+	return c.Status(200).JSON(results)
+}
+func GetUserBets(c *fiber.Ctx) error {
+	userID := c.Params("id")
+	var bets []models.BetSlip // หรือชื่อ Model บิลของคุณ
+
+	// ดึงข้อมูลจากตาราง bet_slips โดยตรง (ซึ่งมีฟิลด์ HomeTeam, AwayTeam อยู่แล้ว)
+	err := database.DB.Where("user_id = ?", userID).
+		Order("created_at desc").
+		Find(&bets).Error
+
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "คึงข้อมูลการเดิมพันไม่สำเร็จ"})
+	}
+
+	return c.Status(200).JSON(bets)
 }
