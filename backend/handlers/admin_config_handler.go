@@ -274,3 +274,19 @@ func GetUserBets(c *fiber.Ctx) error {
 		"parlays": parlayBets,
 	})
 }
+func GetUserFullBetHistory(c *fiber.Ctx) error {
+	userID := c.Params("id")
+
+	// ดึงบอลเต็ง
+	var singles []models.BetSlip
+	database.DB.Where("user_id = ?", userID).Order("created_at desc").Find(&singles)
+
+	// ดึงบอลสเต็ป พร้อมคู่บอลข้างใน (Items)
+	var parlays []models.ParlayTicket
+	database.DB.Preload("Items").Where("user_id = ?", userID).Order("created_at desc").Find(&parlays)
+
+	return c.JSON(fiber.Map{
+		"singles": singles,
+		"parlays": parlays,
+	})
+}

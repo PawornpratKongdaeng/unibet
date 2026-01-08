@@ -13,7 +13,6 @@ export default function AdminUsersPage() {
   const { data: users, mutate, isLoading } = useSWR("/admin/users", fetcher);
 
   // --- 1. Global Tab Switcher for SweetAlert ---
-  // This allows the HTML inside SweetAlert to call JS functions
   useEffect(() => {
     (window as any).switchInspectorTab = (tab: 'fin' | 'bet') => {
       const finBox = document.getElementById('box-fin');
@@ -218,31 +217,63 @@ function buildTransactionRows(txs: any[]) {
   }).join('');
 }
 
-function buildBetRows(bets: any[]) {
-  if (!bets || bets.length === 0) return '<tr><td colspan="4" class="p-10 text-center text-zinc-400 font-bold">No betting history found</td></tr>';
+function buildBetRows(bets: any) {
+  // รวมข้อมูลจากทั้ง singles และ parlays (รองรับโครงสร้าง Object จาก API)
+  let betArray: any[] = [];
+  if (Array.isArray(bets)) {
+    betArray = bets;
+  } else if (bets && (bets.parlays || bets.singles)) {
+    betArray = [...(bets.parlays || []), ...(bets.singles || [])];
+  }
   
-  return bets.map(bet => {
-    const result = (bet.result || 'waiting').toLowerCase();
+  if (betArray.length === 0) return '<tr><td colspan="4" class="p-10 text-center text-zinc-400 font-bold">No betting history found</td></tr>';
+  
+  // เรียงลำดับตามวันที่ล่าสุด
+  betArray.sort((a, b) => new Date(b.CreatedAt || b.created_at).getTime() - new Date(a.CreatedAt || a.created_at).getTime());
+
+  return betArray.map(bet => {
+    const dateStr = new Date(bet.CreatedAt || bet.created_at).toLocaleDateString();
+    const status = (bet.status || 'pending').toLowerCase();
+    const resColor = status === 'win' ? 'text-emerald-500' : (status === 'lost' ? 'text-rose-500' : 'text-zinc-400');
     
-    // Team Name Logic
+    // ตรวจสอบว่าเป็นสเต็ป (Mixplay) หรือไม่
+    const items = bet.Items || bet.items || [];
+
+    if (items.length > 0) {
+      const itemsHtml = items.map((item: any) => `
+        <div class="mb-2 p-2 bg-zinc-50 rounded border-l-2 border-[#127447]">
+          <div class="font-bold text-[10px] uppercase">${item.home_team} vs ${item.away_team}</div>
+          <div class="text-[9px] text-[#127447] font-black">เลือก: ${item.pick} @${item.odds}</div>
+        </div>
+      `).join('');
+
+      return `
+        <tr class="border-b border-zinc-100 bg-emerald-50/20">
+          <td class="p-3">
+             <div class="font-bold text-zinc-600">${dateStr}</div>
+             <span class="text-[9px] bg-[#127447] text-white px-2 py-0.5 rounded-full font-black uppercase">Mixplay (${items.length} คู่)</span>
+          </td>
+          <td class="p-3">${itemsHtml}</td>
+          <td class="p-3 font-black text-right text-sm">฿${Number(bet.amount).toLocaleString()}</td>
+          <td class="p-3 text-center font-black ${resColor} uppercase">${status}</td>
+        </tr>
+      `;
+    }
+
+    // กรณีบอลเต็ง (Single)
     let displayPick = bet.pick;
     if (bet.pick?.toLowerCase() === 'home') displayPick = bet.home_team;
     if (bet.pick?.toLowerCase() === 'away') displayPick = bet.away_team;
 
-    const resColor = result === 'win' ? 'text-emerald-500' : (result === 'loss' ? 'text-rose-500' : 'text-zinc-400');
-
     return `
       <tr class="border-b border-zinc-50 text-[11px]">
-        <td class="p-3">
-          <div class="font-bold text-zinc-600">${new Date(bet.created_at).toLocaleDateString('en-US')}</div>
-          <div class="text-[9px] text-zinc-400">${new Date(bet.created_at).toLocaleTimeString('en-US', { hour12: false })}</div>
-        </td>
+        <td class="p-3 font-bold text-zinc-600">${dateStr}</td>
         <td class="p-3">
           <div class="font-black text-zinc-800 uppercase leading-tight">${bet.home_team} vs ${bet.away_team}</div>
           <div class="text-[10px] text-[#127447] font-bold mt-1 uppercase">PICK: ${displayPick}</div>
         </td>
-        <td class="p-3 font-black text-right">฿${Number(bet.amount).toLocaleString()}</td>
-        <td class="p-3 text-center font-black ${resColor} uppercase">${result}</td>
+        <td class="p-3 font-black text-right text-sm">฿${Number(bet.amount).toLocaleString()}</td>
+        <td class="p-3 text-center font-black ${resColor} uppercase">${status}</td>
       </tr>
     `;
   }).join('');
