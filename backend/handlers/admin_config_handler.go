@@ -3,7 +3,6 @@ package handlers
 import (
 	"github.com/PawornpratKongdaeng/soccer/database"
 	"github.com/PawornpratKongdaeng/soccer/models"
-	"github.com/gin-gonic/gin"
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
@@ -230,17 +229,20 @@ func RequestWithdraw(c *fiber.Ctx) error {
 		"new_credit": user.Credit,
 	})
 }
-func GetUserTransactions(c *gin.Context) {
-	userID := c.Param("id") // รับเลข 1 จาก URL
+func GetUserTransactions(c *fiber.Ctx) error {
+	userID := c.Params("id") // Fiber ใช้ Params เติม s และไม่มีเครื่องหมาย :
 	var transactions []models.Transaction
 
 	// ดึงข้อมูล Transaction ที่ user_id ตรงกัน เรียงจากใหม่ไปเก่า
+	// ใช้ Preload("User") หากต้องการข้อมูลชื่อผู้ใช้ด้วย
 	result := database.DB.Where("user_id = ?", userID).Order("created_at desc").Find(&transactions)
 
 	if result.Error != nil {
-		c.JSON(500, gin.H{"error": "ไม่สามารถดึงข้อมูลประวัติได้"})
-		return
+		return c.Status(500).JSON(fiber.Map{
+			"error": "ไม่สามารถดึงข้อมูลประวัติได้",
+		})
 	}
 
-	c.JSON(200, transactions)
+	// ใน Fiber ต้อง return c.JSON
+	return c.JSON(transactions)
 }
