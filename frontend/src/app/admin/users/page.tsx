@@ -19,7 +19,7 @@ export default function AdminUsersPage() {
   const { data: users, mutate, isLoading } = useSWR("/admin/users", fetcher);
 
   // ✅ ฟังก์ชันหลัก: ดูรายละเอียด (ดึงข้อมูล Transaction และ Bet History แยกกันเพื่อความชัวร์)
-  const handleViewDetails = async (user: any) => {
+ const handleViewDetails = async (user: any) => {
     Swal.fire({
       title: "กำลังดึงข้อมูล...",
       allowOutsideClick: false,
@@ -27,7 +27,6 @@ export default function AdminUsersPage() {
     });
 
     try {
-      // ดึงข้อมูลพร้อมกัน และใช้ .catch เพื่อไม่ให้ตัวหนึ่งพังแล้ว Dialog ไม่ขึ้น
       const [txRes, betRes] = await Promise.all([
         apiFetch(`/admin/users/${user.id}/transactions`).catch(() => null),
         apiFetch(`/admin/users/${user.id}/bets`).catch(() => null)
@@ -36,46 +35,84 @@ export default function AdminUsersPage() {
       const transactions = txRes && txRes.ok ? await txRes.json() : [];
       const bets = betRes && betRes.ok ? await betRes.json() : [];
 
-      // 💰 Render HTML ตารางธุรกรรม
+      // 💰 1. ตารางธุรกรรม (เพิ่ม: ชื่อทีม/คู่เดิมพัน ใต้ประเภทธุรกรรม)
       const txHtml = (Array.isArray(transactions) && transactions.length > 0) ? `
         <div class="table-container">
           <table class="details-table">
             <thead>
-              <tr><th>วันที่</th><th>ประเภท</th><th style="text-align:right;">จำนวน</th><th style="text-align:center;">สถานะ</th></tr>
+              <tr>
+                <th>วันที่/เวลา</th>
+                <th>รายการ / ทีมที่เล่น</th>
+                <th style="text-align:right;">จำนวน</th>
+                <th style="text-align:center;">สถานะ</th>
+              </tr>
             </thead>
             <tbody>
-              ${transactions.map((tx: any) => `
+              ${transactions.map((tx: any) => {
+                const date = new Date(tx.created_at).toLocaleDateString('th-TH');
+                const time = new Date(tx.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+                
+                // แสดงรายละเอียดทีมถ้าเป็นรายการ BET หรือ PAYOUT
+                let matchDetail = "";
+                if (tx.match_name) {
+                   matchDetail = `<div style="font-size:10px; color:#127447; font-weight:700;">⚽ ${tx.match_name}</div>`;
+                }
+
+                return `
                 <tr>
-                  <td>${new Date(tx.created_at).toLocaleDateString('th-TH')}</td>
-                  <td style="color:${tx.type === 'deposit' ? '#10b981' : '#f43f5e'}; font-weight:900;">${tx.type.toUpperCase()}</td>
+                  <td>
+                    <div style="font-weight:700;">${date}</div>
+                    <div style="font-size:10px; color:#999;">${time} น.</div>
+                  </td>
+                  <td>
+                    <b style="color:${tx.type === 'deposit' || tx.result === 'win' ? '#10b981' : '#f43f5e'}; text-transform:uppercase;">
+                      ${tx.type}
+                    </b>
+                    ${matchDetail}
+                    ${tx.result ? `<span style="font-size:9px; color:${tx.result === 'win' ? '#10b981' : '#f43f5e'};">(${tx.result.toUpperCase()})</span>` : ''}
+                  </td>
                   <td style="text-align:right; font-weight:800;">฿${Number(tx.amount).toLocaleString()}</td>
                   <td style="text-align:center; font-size:10px; font-weight:700;">${tx.status.toUpperCase()}</td>
-                </tr>
-              `).join('')}
+                </tr>`;
+              }).join('')}
             </tbody>
           </table>
         </div>` : '<p class="no-data">ไม่พบประวัติการเงิน</p>';
 
-      // 🏆 Render HTML ประวัติเดิมพัน (Win/Loss)
+      // 🏆 2. ตารางเดิมพัน (เพิ่ม: เน้นทีมที่เลือก "Selection" ให้เด่นชัด)
       const betHtml = (Array.isArray(bets) && bets.length > 0) ? `
         <div class="table-container">
           <table class="details-table">
             <thead>
-              <tr><th>คู่เดิมพัน</th><th style="text-align:center;">เลือก</th><th style="text-align:right;">เดิมพัน</th><th style="text-align:center;">ผลลัพธ์</th></tr>
+              <tr>
+                <th>คู่เดิมพัน/เวลา</th>
+                <th style="text-align:center;">ทีมที่เล่น</th>
+                <th style="text-align:right;">เดิมพัน</th>
+                <th style="text-align:center;">ผลลัพธ์</th>
+              </tr>
             </thead>
             <tbody>
               ${bets.map((bet: any) => {
+                const date = new Date(bet.created_at).toLocaleDateString('th-TH');
+                const time = new Date(bet.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
                 const color = bet.result === 'win' ? '#10b981' : (bet.result === 'loss' ? '#f43f5e' : '#94a3b8');
+                
                 return `
                 <tr>
                   <td>
                     <div style="font-weight:800; color:#111;">${bet.match_name}</div>
-                    <div style="font-size:10px; color:#999;">${new Date(bet.created_at).toLocaleString('th-TH')}</div>
+                    <div style="font-size:10px; color:#999;">${date} | ${time} น.</div>
                   </td>
-                  <td style="text-align:center; font-weight:700;">${bet.selection}</td>
+                  <td style="text-align:center;">
+                    <div style="background:#f0fdf4; border:1px solid #127447; color:#127447; padding:2px 8px; border-radius:4px; font-weight:900; font-size:11px;">
+                      ${bet.selection}
+                    </div>
+                  </td>
                   <td style="text-align:right; font-weight:800;">฿${Number(bet.amount).toLocaleString()}</td>
                   <td style="text-align:center;">
-                    <b style="color:${color}; text-transform:uppercase; font-size:11px;">${bet.result}</b>
+                    <div style="background:${color}; color:white; padding:3px 6px; border-radius:6px; font-size:10px; font-weight:900; text-transform:uppercase;">
+                      ${bet.result}
+                    </div>
                   </td>
                 </tr>`;
               }).join('')}
@@ -83,34 +120,33 @@ export default function AdminUsersPage() {
           </table>
         </div>` : '<p class="no-data">ไม่พบประวัติการเดิมพัน</p>';
 
-      // 🚀 แสดงผลด้วย Swal (พร้อมระบบ Tab Switcher)
+      // แสดงผลใน Swal
       Swal.fire({
         title: `<div style="font-size:22px; font-weight:900; color:#127447; font-style:italic;">ADMIN INSPECTOR</div>`,
         width: '95%',
-        confirmButtonText: "DONE",
+        confirmButtonText: "ปิดหน้าต่าง",
         confirmButtonColor: "#127447",
         html: `
           <style>
-            .table-container { max-height:350px; overflow:auto; border:1px solid #eee; border-radius:15px; margin-top:10px; }
+            .table-container { max-height:450px; overflow:auto; border:1px solid #eee; border-radius:15px; margin-top:10px; }
             .details-table { width:100%; border-collapse:collapse; font-size:12px; }
-            .details-table th { background:#f8f9fa; padding:12px 10px; position:sticky; top:0; z-index:1; text-align:left; }
-            .details-table td { padding:12px 10px; border-bottom:1px solid #f1f5f9; text-align:left; }
+            .details-table th { background:#f8f9fa; padding:12px 10px; position:sticky; top:0; z-index:1; text-align:left; color:#666; }
+            .details-table td { padding:12px 10px; border-bottom:1px solid #f1f5f9; text-align:left; vertical-align:middle; }
             .user-info-card { background:#f0fdf4; padding:20px; border-radius:20px; border:2px solid #127447; margin-bottom:15px; text-align:left; }
             .nav-tabs { display:flex; gap:8px; margin-bottom:12px; border-bottom:2px solid #f1f5f9; padding-bottom:10px; }
-            .tab-btn { flex:1; padding:10px; border-radius:12px; font-size:12px; font-weight:800; cursor:pointer; border:none; background:#f1f5f9; color:#94a3b8; transition:all 0.2s; }
-            .tab-btn.active { background:#127447; color:white; box-shadow:0 4px 10px rgba(18,116,71,0.2); }
-            .no-data { padding:30px; color:#999; font-weight:bold; text-align:center; }
+            .tab-btn { flex:1; padding:12px; border-radius:12px; font-size:13px; font-weight:800; cursor:pointer; border:none; background:#f1f5f9; color:#94a3b8; }
+            .tab-btn.active { background:#127447; color:white; }
           </style>
           
           <div class="user-info-card">
-            <div style="font-size:11px; color:#127447; font-weight:800; text-transform:uppercase; letter-spacing:1px;">Account Overview</div>
-            <div style="font-size:24px; font-weight:900; color:#111;">${user.username}</div>
+            <div style="font-size:11px; color:#127447; font-weight:800; text-transform:uppercase;">User Account</div>
+            <div style="font-size:24px; font-weight:900;">${user.username}</div>
             <div style="font-size:28px; font-weight:900; color:#127447; margin-top:4px;">฿${Number(user.credit || 0).toLocaleString()}</div>
           </div>
 
           <div class="nav-tabs">
-            <button id="tab-tx-btn" class="tab-btn active" onclick="switchTab('tx')">ธุรกรรมการเงิน</button>
-            <button id="tab-bet-btn" class="tab-btn" onclick="switchTab('bet')">ประวัติเดิมพัน</button>
+            <button id="tab-tx-btn" class="tab-btn active" onclick="switchTab('tx')">รายการเงิน</button>
+            <button id="tab-bet-btn" class="tab-btn" onclick="switchTab('bet')">การเดิมพัน</button>
           </div>
 
           <div id="tab-tx-content">${txHtml}</div>
@@ -122,7 +158,6 @@ export default function AdminUsersPage() {
               const betBtn = document.getElementById('tab-bet-btn');
               const txContent = document.getElementById('tab-tx-content');
               const betContent = document.getElementById('tab-bet-content');
-
               if(type === 'tx') {
                 txBtn.classList.add('active'); betBtn.classList.remove('active');
                 txContent.style.display = 'block'; betContent.style.display = 'none';
@@ -133,12 +168,11 @@ export default function AdminUsersPage() {
             }
           </script>
         `,
-        customClass: { popup: 'rounded-[2.5rem]', confirmButton: 'rounded-xl px-10 py-3 font-black uppercase' }
+        customClass: { popup: 'rounded-[2.5rem]', confirmButton: 'rounded-xl px-10 py-3 font-black' }
       });
 
     } catch (err) {
-      console.error("Fetch Error:", err);
-      Swal.fire("Error", "เกิดข้อผิดพลาดในการดึงข้อมูลจาก Server", "error");
+      Swal.fire("Error", "ไม่สามารถดึงข้อมูลได้", "error");
     }
   };
 
