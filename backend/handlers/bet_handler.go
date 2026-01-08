@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"log"
 	"strconv"
 
 	"github.com/PawornpratKongdaeng/soccer/database"
@@ -194,42 +193,69 @@ func SettleBets(db *gorm.DB, results []models.MatchResult) error {
 			continue
 		}
 
-		// แปลง res.ID (string) เป็น uint เพื่อค้นหาในฐานข้อมูล
-		mID, _ := strconv.ParseUint(res.ID, 10, 32)
-
-		// 1. ค้นหาบิล "เต็ง" (BetSlip) ที่ยังค้างอยู่
+		// --- ส่วนที่ 1: คิดผลบอลเต็ง ---
 		var bets []models.BetSlip
+		// แปลง res.ID เป็น uint เพื่อใช้กับ BetSlip (เพราะ MatchID เป็น uint)
+		mID, _ := strconv.ParseUint(res.ID, 10, 32)
 		db.Where("match_id = ? AND status = ?", uint(mID), "pending").Find(&bets)
 
 		for _, bet := range bets {
-			// 2. คำนวณผล (ใช้ฟังก์ชัน calculateScore ที่คุณเขียนไว้)
 			resultStatus := calculateScore(res, bet.Pick)
-
-			// 3. เริ่ม Transaction เพื่อคิดเงิน
-			err := db.Transaction(func(tx *gorm.DB) error {
-				// อัปเดตสถานะบิล
-				if err := tx.Model(&bet).Update("status", resultStatus).Error; err != nil {
-					return err
-				}
-
-				// ถ้าชนะ (WIN) หรือ เสมอ (DRAW - คืนทุน)
+			db.Transaction(func(tx *gorm.DB) error {
+				tx.Model(&bet).Update("status", resultStatus)
 				if resultStatus == "win" {
-					// บวกเงินเข้า Credit (ไม่ใช่ balance)
-					if err := tx.Model(&models.User{}).Where("id = ?", bet.UserID).
-						Update("credit", gorm.Expr("credit + ?", bet.Payout)).Error; err != nil {
-						return err
-					}
+					tx.Model(&models.User{}).Where("id = ?", bet.UserID).
+						Update("credit", gorm.Expr("credit + ?", bet.Payout))
 				} else if resultStatus == "draw" {
-					// กรณีเสมอ คืนทุน (Amount)
 					tx.Model(&models.User{}).Where("id = ?", bet.UserID).
 						Update("credit", gorm.Expr("credit + ?", bet.Amount))
 				}
 				return nil
 			})
+		}
 
-			if err != nil {
-				log.Println("Settlement Error for Bet ID:", bet.ID, err)
-			}
+		// --- ส่วนที่ 2: คิดผลบอลสเต็ป (Mixplay) ---
+		var parlayItems []models.ParlayItem
+		// ใช้ res.ID (string) โดยตรงเพราะ ParlayItem.MatchID เป็น string
+		db.Where("match_id = ? AND status = ?", res.ID, "pending").Find(&parlayItems)
+
+		for _, item := range parlayItems {
+			resultStatus := calculateScore(res, item.Pick)
+
+			db.Transaction(func(tx *gorm.DB) error {
+				tx.Model(&item).Update("status", resultStatus)
+
+				var ticket models.ParlayTicket
+				// Preload Items เพื่อมาเช็คว่าคู่อื่นๆ ในใบเดียวกันแข่งจบหรือยัง
+				if err := tx.Preload("Items").First(&ticket, item.TicketID).Error; err != nil {
+					return err
+				}
+
+				allFinished := true
+				anyLost := false
+				for _, itm := range ticket.Items {
+					if itm.Status == "pending" {
+						allFinished = false
+					}
+					if itm.Status == "lost" {
+						anyLost = true
+					}
+				}
+
+				if allFinished {
+					finalStatus := "win"
+					if anyLost {
+						finalStatus = "lost"
+					}
+
+					tx.Model(&ticket).Update("status", finalStatus)
+					if finalStatus == "win" {
+						tx.Model(&models.User{}).Where("id = ?", ticket.UserID).
+							Update("credit", gorm.Expr("credit + ?", ticket.Payout))
+					}
+				}
+				return nil
+			})
 		}
 	}
 	return nil

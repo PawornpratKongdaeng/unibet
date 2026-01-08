@@ -260,16 +260,17 @@ func GetUserTransactions(c *fiber.Ctx) error {
 // --- ส่วนของดึงประวัติการเดิมพัน (Bet History) ---
 func GetUserBets(c *fiber.Ctx) error {
 	userID := c.Params("id")
-	var bets []models.BetSlip
 
-	// ดึงจากตาราง bet_slips โดยตรง
-	err := database.DB.Where("user_id = ?", userID).
-		Order("created_at desc").
-		Find(&bets).Error
+	// 1. ดึงบอลเต็ง
+	var singleBets []models.BetSlip
+	database.DB.Where("user_id = ?", userID).Order("id desc").Find(&singleBets)
 
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถดึงข้อมูลเดิมพันได้"})
-	}
+	// 2. ดึงบอลสเต็ป (ต้องใช้ Preload เพื่อดึง Items)
+	var parlayBets []models.ParlayTicket
+	database.DB.Preload("Items").Where("user_id = ?", userID).Order("id desc").Find(&parlayBets)
 
-	return c.Status(200).JSON(bets)
+	return c.JSON(fiber.Map{
+		"singles": singleBets,
+		"parlays": parlayBets,
+	})
 }
