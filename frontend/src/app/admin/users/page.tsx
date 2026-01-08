@@ -33,14 +33,14 @@ export default function AdminUsersPage() {
       const transactions = txRes && txRes.ok ? await txRes.json() : [];
       const bets = betRes && betRes.ok ? await betRes.json() : [];
 
-      // 💰 1. Financial Records (Added detailed Team/Selection check)
+      // 💰 1. Financial Records
       const txHtml = (Array.isArray(transactions) && transactions.length > 0) ? `
         <div class="table-container">
           <table class="details-table">
             <thead>
               <tr>
                 <th>Date/Time</th>
-                <th>Type / Selection</th>
+                <th>Type / Match</th>
                 <th style="text-align:right;">Amount</th>
                 <th style="text-align:center;">Status</th>
               </tr>
@@ -50,10 +50,10 @@ export default function AdminUsersPage() {
                 const date = new Date(tx.created_at).toLocaleDateString('en-US');
                 const time = new Date(tx.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
                 
-                // FIXED: Ensure Match Name or Selection shows up
-                const displayTeam = tx.match_name || tx.selection || "";
-                const matchDetail = displayTeam 
-                    ? `<div style="font-size:10px; color:#127447; font-weight:700; margin-top:2px;">⚽ ${displayTeam}</div>` 
+                // แก้ไข: รวมชื่อทีมจาก Backend (home_team + away_team)
+                const matchName = tx.match_name || (tx.home_team && tx.away_team ? `${tx.home_team} vs ${tx.away_team}` : "");
+                const matchDetail = matchName 
+                    ? `<div style="font-size:10px; color:#127447; font-weight:700; margin-top:2px;">⚽ ${matchName}</div>` 
                     : "";
 
                 return `
@@ -95,21 +95,24 @@ export default function AdminUsersPage() {
                 const time = new Date(bet.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
                 const color = bet.result === 'win' ? '#10b981' : (bet.result === 'loss' ? '#f43f5e' : '#94a3b8');
                 
+                // แก้ไข: รวมชื่อทีมให้แสดงผล (Home vs Away)
+                const fullMatchName = bet.match_name || `${bet.home_team} vs ${bet.away_team}`;
+
                 return `
                 <tr>
                   <td>
-                    <div style="font-weight:800; color:#111;">${bet.match_name}</div>
+                    <div style="font-weight:800; color:#111;">${fullMatchName}</div>
                     <div style="font-size:10px; color:#999;">${date} | ${time}</div>
                   </td>
                   <td style="text-align:center;">
-                    <div style="background:#f0fdf4; border:1px solid #127447; color:#127447; padding:2px 8px; border-radius:4px; font-weight:900; font-size:11px;">
-                      ${bet.selection}
+                    <div style="background:#f0fdf4; border:1px solid #127447; color:#127447; padding:2px 8px; border-radius:4px; font-weight:900; font-size:11px; text-transform:uppercase;">
+                      ${bet.pick || bet.selection}
                     </div>
                   </td>
                   <td style="text-align:right; font-weight:800;">฿${Number(bet.amount).toLocaleString()}</td>
                   <td style="text-align:center;">
                     <div style="background:${color}; color:white; padding:3px 6px; border-radius:6px; font-size:10px; font-weight:900; text-transform:uppercase;">
-                      ${bet.result}
+                      ${bet.status || bet.result}
                     </div>
                   </td>
                 </tr>`;
@@ -170,10 +173,12 @@ export default function AdminUsersPage() {
       });
 
     } catch (err) {
+      console.error(err);
       Swal.fire("Error", "Could not fetch detailed data", "error");
     }
   };
 
+  // ... (ส่วนที่เหลือของ component เหมือนเดิม)
   const handleCredit = async (user: any) => {
     const { value: amount } = await Swal.fire({
       title: 'Adjust Balance',
