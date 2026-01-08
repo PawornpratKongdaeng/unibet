@@ -181,28 +181,58 @@ export default function AdminUsersPage() {
 
 // --- Helper HTML Generators ---
 
+// --- ธุรกรรม (ฝาก-ถอน) ---
 function buildTransactionRows(txs: any[]) {
-  if (!txs.length) return '<tr><td colspan="4" class="p-10 text-center text-zinc-400 font-bold">No transactions found</td></tr>';
-  return txs.map(tx => `
-    <tr class="border-b border-zinc-50">
-      <td class="p-4 text-xs font-bold text-zinc-500">${new Date(tx.created_at).toLocaleString('th-TH')}</td>
-      <td class="p-4 font-black text-[#127447] uppercase text-xs">${tx.type}</td>
-      <td class="p-4 font-black text-right">฿${Number(tx.amount).toLocaleString()}</td>
-      <td class="p-4 text-center"><span class="bg-zinc-100 px-2 py-1 rounded text-[10px] font-black">${tx.status}</span></td>
-    </tr>
-  `).join('');
+  if (!txs || txs.length === 0) return '<tr><td colspan="4" class="p-10 text-center text-zinc-400 font-bold">ไม่พบประวัติการทำรายการ</td></tr>';
+  
+  return txs.map(tx => {
+    const isPlus = tx.type?.toLowerCase().includes('deposit') || tx.type?.toLowerCase().includes('payout');
+    const typeLabel = tx.type?.toLowerCase() === 'deposit' ? 'ฝากเงิน' : (tx.type?.toLowerCase() === 'withdraw' ? 'ถอนเงิน' : tx.type);
+    
+    return `
+      <tr class="border-b border-zinc-50 text-[11px]">
+        <td class="p-3">
+          <div class="font-bold text-zinc-600">${new Date(tx.created_at).toLocaleDateString('th-TH')}</div>
+          <div class="text-[9px] text-zinc-400">${new Date(tx.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
+        </td>
+        <td class="p-3 font-black ${isPlus ? 'text-emerald-600' : 'text-rose-500'} uppercase">${typeLabel}</td>
+        <td class="p-3 font-black text-right text-sm">฿${Number(tx.amount).toLocaleString()}</td>
+        <td class="p-3 text-center">
+          <span class="px-2 py-0.5 rounded-full text-[9px] font-black ${tx.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-zinc-500'}">
+            ${(tx.status || 'PENDING').toUpperCase()}
+          </span>
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
+// --- ประวัติการเดิมพัน (บิล) ---
 function buildBetRows(bets: any[]) {
-    if (!bets.length) return '<tr><td colspan="4" class="p-10 text-center text-zinc-400 font-bold">No bets found</td></tr>';
-    return bets.map(bet => `
-      <tr class="border-b border-zinc-50 text-xs">
-        <td class="p-4 font-bold">${bet.home_team} vs ${bet.away_team}</td>
-        <td class="p-4 text-center font-black">${bet.pick}</td>
-        <td class="p-4 text-right font-black">฿${Number(bet.amount).toLocaleString()}</td>
-        <td class="p-4 text-center font-black ${bet.result === 'win' ? 'text-green-500' : 'text-red-500'}">${bet.result?.toUpperCase() || 'PENDING'}</td>
+  if (!bets || bets.length === 0) return '<tr><td colspan="5" class="p-10 text-center text-zinc-400 font-bold">ไม่พบประวัติการเดิมพัน</td></tr>';
+  
+  return bets.map(bet => {
+    const result = bet.result?.toLowerCase(); // win, loss, draw, pending
+    const resColor = result === 'win' ? 'text-emerald-500' : (result === 'loss' ? 'text-rose-500' : 'text-zinc-400');
+    const resBg = result === 'win' ? 'bg-emerald-50' : (result === 'loss' ? 'bg-rose-50' : 'bg-zinc-50');
+
+    return `
+      <tr class="border-b border-zinc-50 text-[11px] ${resBg}">
+        <td class="p-3">
+          <div class="font-bold text-zinc-600">${new Date(bet.created_at).toLocaleDateString('th-TH')}</div>
+          <div class="text-[9px] text-zinc-400">${new Date(bet.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div>
+        </td>
+        <td class="p-3">
+          <div class="font-black text-zinc-800 uppercase leading-tight">${bet.home_team} <span class="text-zinc-400">VS</span> ${bet.away_team}</div>
+          <div class="text-[10px] text-[#127447] font-bold">เลือก: ${bet.pick}</div>
+        </td>
+        <td class="p-3 font-black text-right">฿${Number(bet.amount).toLocaleString()}</td>
+        <td class="p-3 text-center">
+          <div class="font-black ${resColor} uppercase tracking-tighter">${result || 'WAITING'}</div>
+        </td>
       </tr>
-    `).join('');
+    `;
+  }).join('');
 }
 
 function generateInspectorHTML(user: any, txs: any[], bets: any[]) {
