@@ -236,22 +236,22 @@ func GetUserTransactions(c *fiber.Ctx) error {
 
 	type TransactionWithMatch struct {
 		models.Transaction
-		HomeTeam string `json:"home_team"`
-		AwayTeam string `json:"away_team"`
+		HomeTeam string `json:"home_team"` // From LEFT JOIN
+		AwayTeam string `json:"away_team"` // From LEFT JOIN
 	}
 
 	var results []TransactionWithMatch
 
-	// ใช้ INNER JOIN เพื่อกรองเอาเฉพาะรายการที่มีคู่บอลเท่านั้น
+	// Use LEFT JOIN so we still get Deposits/Withdraws even if there is no match
 	err := database.DB.Table("transactions").
 		Select("transactions.*, bet_slips.home_team, bet_slips.away_team").
-		Joins("INNER JOIN bet_slips ON transactions.id = bet_slips.id").
+		Joins("LEFT JOIN bet_slips ON transactions.id = bet_slips.id").
 		Where("transactions.user_id = ?", userID).
 		Order("transactions.created_at desc").
 		Scan(&results).Error
 
 	if err != nil {
-		return c.Status(200).JSON([]interface{}{}) // ส่งอาเรย์ว่างถ้าไม่พบข้อมูล
+		return c.Status(200).JSON([]interface{}{})
 	}
 
 	return c.Status(200).JSON(results)
