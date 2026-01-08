@@ -83,30 +83,124 @@ export default function AdminUsersPage() {
 
   // --- 4. ดูรายละเอียด (Inspector) ---
   const handleViewDetails = async (user: any) => {
-    Swal.fire({ title: "กำลังดึงข้อมูล...", didOpen: () => Swal.showLoading() });
-    
+    Swal.fire({
+      title: "กำลังดึงข้อมูล...",
+      allowOutsideClick: false,
+      didOpen: () => Swal.showLoading(),
+    });
+
     try {
-      const [txs, bets] = await Promise.all([
-        apiFetch(`/admin/users/${user.id}/transactions`).then(r => r.json()),
-        apiFetch(`/admin/users/${user.id}/bets`).then(r => r.json())
+      // 1. ดึงข้อมูลแบบตรวจสอบสถานะ Response
+      const [txRes, betRes] = await Promise.all([
+        apiFetch(`/admin/users/${user.id}/transactions`).catch(e => { console.error("TX Error:", e); return null; }),
+        apiFetch(`/admin/users/${user.id}/bets`).catch(e => { console.error("Bet Error:", e); return null; })
       ]);
 
+      // 2. ฟังก์ชันช่วย Parse JSON ป้องกัน Error กรณี Body ว่างหรือไม่ใช่ JSON
+      const safeParse = async (res: Response | null) => {
+        if (!res || !res.ok) return [];
+        try {
+          const text = await res.text();
+          return text ? JSON.parse(text) : [];
+        } catch (e) {
+          console.error("JSON Parse Error:", e);
+          return [];
+        }
+      };
+
+      const transactions = await safeParse(txRes);
+      const bets = await safeParse(betRes);
+
+      // --- Debug Log: ตรวจดูว่าข้อมูลที่มาจริง ๆ หน้าตาเป็นอย่างไร ---
+      console.log("Fetched Transactions:", transactions);
+      console.log("Fetched Bets:", bets);
+
+      // 3. ตรวจสอบว่าข้อมูลเป็น Array ก่อนใช้ .map()
+      const txData = Array.isArray(transactions) ? transactions : [];
+      const betData = Array.isArray(bets) ? bets : [];
+
+      const txHtml = txData.length > 0 ? `
+        <div class="table-scroll">
+          <table class="insp-table">
+            <thead>
+              <tr>
+                <th style="width:25%">Date/Time</th>
+                <th style="width:40%">Type / Match</th>
+                <th style="text-align:right;">Amount</th>
+                <th style="text-align:center;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${txData.map((tx: any) => {
+                const dateObj = new Date(tx.created_at);
+                const isPlus = tx.type?.toLowerCase() === 'payout' || tx.type?.toLowerCase() === 'deposit';
+                return `
+                <tr>
+                  <td><div class="bold">${dateObj.toLocaleDateString('th-TH')}</div><div class="small-grey">${dateObj.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</div></td>
+                  <td>
+                    <div class="bold" style="color:${isPlus ? '#10b981' : '#f43f5e'}">${(tx.type || 'N/A').toUpperCase()}</div>
+                    ${tx.home_team ? `<div class="small-green">⚽ ${tx.home_team} vs ${tx.away_team}</div>` : ''}
+                  </td>
+                  <td style="text-align:right;" class="bold-large">฿${Number(tx.amount || 0).toLocaleString()}</td>
+                  <td style="text-align:center;"><span class="badge-status">${(tx.status || 'PENDING').toUpperCase()}</span></td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>` : '<div class="empty-box">ไม่พบข้อมูลธุรกรรม</div>';
+
+      const betHtml = betData.length > 0 ? `
+        <div class="table-scroll">
+          <table class="insp-table">
+            <thead>
+              <tr>
+                <th>Match</th>
+                <th style="text-align:center;">Pick</th>
+                <th style="text-align:right;">Wager</th>
+                <th style="text-align:center;">Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${betData.map((bet: any) => {
+                const resColor = bet.result === 'win' ? '#10b981' : (bet.result === 'loss' ? '#f43f5e' : '#94a3b8');
+                return `
+                <tr>
+                  <td><div class="bold">${bet.home_team || 'Unknown'} vs ${bet.away_team || 'Unknown'}</div><div class="small-grey">${new Date(bet.created_at).toLocaleDateString('th-TH')}</div></td>
+                  <td style="text-align:center;"><span class="pick-tag">${bet.pick || '-'}</span></td>
+                  <td style="text-align:right;" class="bold">฿${Number(bet.amount || 0).toLocaleString()}</td>
+                  <td style="text-align:center;"><span class="res-tag" style="background:${resColor}">${(bet.result || 'PENDING').toUpperCase()}</span></td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>` : '<div class="empty-box">ไม่พบประวัติการเดิมพัน</div>';
+
+      // 4. แสดงผล Inspector
       Swal.fire({
-        title: `<div class="text-xl font-black text-[#127447]">USER INSPECTOR</div>`,
+        title: `<div class="insp-title">USER INSPECTOR</div>`,
         width: '900px',
-        html: generateInspectorHTML(user, txs, bets),
         confirmButtonText: "CLOSE",
         confirmButtonColor: "#127447",
+        html: `
+          <div class="user-info-card">
+            <div class="info-label">Username: ${user.username}</div>
+            <div class="info-value">฿${Number(user.credit || 0).toLocaleString()}</div>
+          </div>
+          <div class="tab-wrapper">
+            <button id="t-fin" class="tab-item active" onclick="switchInspectorTab('fin')">FINANCIALS</button>
+            <button id="t-bet" class="tab-item" onclick="switchInspectorTab('bet')">BET HISTORY</button>
+          </div>
+          <div id="box-fin">${txHtml}</div>
+          <div id="box-bet" style="display:none;">${betHtml}</div>
+        `,
         customClass: { popup: 'rounded-[2rem]' }
       });
-    } catch (err) {
-      Swal.fire("Error", "โหลดข้อมูลไม่สำเร็จ", "error");
+
+    } catch (err: any) {
+      console.error("Inspector Error Details:", err);
+      Swal.fire("Error", `เกิดข้อผิดพลาด: ${err.message}`, "error");
     }
   };
-
-  const filteredUsers = users?.filter((u: any) => 
-    u.username.toLowerCase().includes(search.toLowerCase())
-  ) || [];
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] p-4 lg:p-10 font-sans">
