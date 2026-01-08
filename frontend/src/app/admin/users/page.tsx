@@ -7,10 +7,12 @@ import {
   UserPlus, Search, Ban, Wallet, Loader2, Phone, Trash2, Eye,
 } from "lucide-react";
 
+// --- Fetcher Helper ---
 const fetcher = (url: string) =>
-  apiFetch(url).then((res) => {
+  apiFetch(url).then(async (res) => {
     if (!res.ok) throw new Error("Failed to fetch");
-    return res.json();
+    const text = await res.text();
+    return text ? JSON.parse(text) : null; // ป้องกัน Error กรณี Body ว่าง
   });
 
 export default function AdminUsersPage() {
@@ -22,23 +24,25 @@ export default function AdminUsersPage() {
     const { value: formValues } = await Swal.fire({
       title: '<span style="font-weight:900; color:#127447;">ADD NEW MEMBER</span>',
       html: `
-        <div style="text-align:left;">
-          <label style="font-size:12px; font-weight:800; color:#666;">USERNAME</label>
-          <input id="swal-username" class="swal2-input" style="margin-top:5px; border-radius:10px;" placeholder="Username">
-          <label style="font-size:12px; font-weight:800; color:#666; margin-top:10px; display:block;">PASSWORD</label>
-          <input id="swal-password" type="password" class="swal2-input" style="margin-top:5px; border-radius:10px;" placeholder="Password">
-          <label style="font-size:12px; font-weight:800; color:#666; margin-top:10px; display:block;">PHONE NUMBER</label>
-          <input id="swal-phone" class="swal2-input" style="margin-top:5px; border-radius:10px;" placeholder="08x-xxxxxxx">
+        <div style="text-align:left; font-family: sans-serif;">
+          <label style="font-size:12px; font-weight:800; color:#666; text-transform:uppercase;">Username</label>
+          <input id="swal-username" class="swal2-input" style="margin-top:5px; border-radius:12px; font-weight:bold;" placeholder="Username">
+          <label style="font-size:12px; font-weight:800; color:#666; margin-top:15px; display:block; text-transform:uppercase;">Password</label>
+          <input id="swal-password" type="password" class="swal2-input" style="margin-top:5px; border-radius:12px; font-weight:bold;" placeholder="Password">
+          <label style="font-size:12px; font-weight:800; color:#666; margin-top:15px; display:block; text-transform:uppercase;">Phone Number</label>
+          <input id="swal-phone" class="swal2-input" style="margin-top:5px; border-radius:12px; font-weight:bold;" placeholder="08x-xxxxxxx">
         </div>
       `,
       showCancelButton: true,
       confirmButtonText: 'CREATE ACCOUNT',
       confirmButtonColor: '#127447',
+      cancelButtonText: 'CANCEL',
+      customClass: { popup: 'rounded-[2rem]' },
       preConfirm: () => {
         const username = (document.getElementById('swal-username') as HTMLInputElement).value;
         const password = (document.getElementById('swal-password') as HTMLInputElement).value;
         const phone = (document.getElementById('swal-phone') as HTMLInputElement).value;
-        if (!username || !password) return Swal.showValidationMessage('กรุณากรอกข้อมูลให้ครบถ้วน');
+        if (!username || !password) return Swal.showValidationMessage('กรุณากรอกข้อมูล Username และ Password');
         return { username, password, phone };
       }
     });
@@ -50,16 +54,16 @@ export default function AdminUsersPage() {
           body: JSON.stringify(formValues),
         });
         if (res.ok) {
-          Swal.fire("สำเร็จ", "เพิ่มสมาชิกเรียบร้อย", "success");
+          Swal.fire({ icon: 'success', title: 'สำเร็จ', text: 'เพิ่มสมาชิกใหม่เรียบร้อยแล้ว', timer: 1500 });
           mutate();
         }
       } catch (err) {
-        Swal.fire("ผิดพลาด", "ไม่สามารถเพิ่มสมาชิกได้", "error");
+        Swal.fire("ผิดพลาด", "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้", "error");
       }
     }
   };
 
-  // --- 2. ฟังก์ชันดูรายละเอียด (ปรับปรุงตามรูปภาพ ADMIN INSPECTOR) ---
+  // --- 2. ฟังก์ชันดูรายละเอียด (USER INSPECTOR - แก้ไขตามภาพ) ---
   const handleViewDetails = async (user: any) => {
     Swal.fire({
       title: "กำลังดึงข้อมูล...",
@@ -68,7 +72,6 @@ export default function AdminUsersPage() {
     });
 
     try {
-      // ดึงข้อมูลพร้อมกัน
       const [txRes, betRes] = await Promise.all([
         apiFetch(`/admin/users/${user.id}/transactions`).catch(() => null),
         apiFetch(`/admin/users/${user.id}/bets`).catch(() => null)
@@ -77,146 +80,142 @@ export default function AdminUsersPage() {
       const transactions = txRes && txRes.ok ? await txRes.json() : [];
       const bets = betRes && betRes.ok ? await betRes.json() : [];
 
-      // ส่วน Financials (รายการเงิน)
+      // Render Financials Table
       const txHtml = (Array.isArray(transactions) && transactions.length > 0) ? `
-        <div class="table-container">
-          <table class="details-table">
+        <div class="table-scroll">
+          <table class="insp-table">
             <thead>
               <tr>
-                <th style="width:20%">วันที่/เวลา</th>
-                <th style="width:40%">ประเภท / รายการ</th>
-                <th style="text-align:right; width:20%">จำนวน</th>
-                <th style="text-align:center; width:20%">สถานะ</th>
+                <th style="width:25%">Date/Time</th>
+                <th style="width:40%">Type / Match</th>
+                <th style="text-align:right;">Amount</th>
+                <th style="text-align:center;">Status</th>
               </tr>
             </thead>
             <tbody>
               ${transactions.map((tx: any) => {
                 const date = new Date(tx.created_at).toLocaleDateString('th-TH');
                 const time = new Date(tx.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-                const typeColor = tx.type.toLowerCase() === 'payout' || tx.type.toLowerCase() === 'deposit' ? '#10b981' : '#f43f5e';
-                const matchInfo = tx.home_team ? `<div class="match-info">⚽ ${tx.home_team} vs ${tx.away_team}</div>` : '';
-                
+                const isPlus = tx.type.toLowerCase() === 'payout' || tx.type.toLowerCase() === 'deposit';
                 return `
                 <tr>
-                  <td><div class="date-txt">${date}</div><div class="time-txt">${time}</div></td>
+                  <td><div class="bold">${date}</div><div class="small-grey">${time}</div></td>
                   <td>
-                    <b style="color:${typeColor}; text-transform:uppercase; font-size:11px;">${tx.type}</b>
-                    ${matchInfo}
+                    <div class="bold" style="color:${isPlus ? '#10b981' : '#f43f5e'}">${tx.type.toUpperCase()}</div>
+                    ${tx.home_team ? `<div class="small-green">⚽ ${tx.home_team} vs ${tx.away_team}</div>` : ''}
                   </td>
-                  <td style="text-align:right; font-weight:800; font-size:13px;">฿${Number(tx.amount).toLocaleString()}</td>
-                  <td style="text-align:center;"><span class="status-label">${tx.status.toUpperCase()}</span></td>
+                  <td style="text-align:right;" class="bold-large">฿${Number(tx.amount).toLocaleString()}</td>
+                  <td style="text-align:center;"><span class="badge-status">${tx.status.toUpperCase()}</span></td>
                 </tr>`;
               }).join('')}
             </tbody>
           </table>
-        </div>` : '<p class="no-data">ไม่พบข้อมูลธุรกรรม</p>';
+        </div>` : '<div class="empty-box">ไม่พบข้อมูลธุรกรรม</div>';
 
-      // ส่วน Bet History (ประวัติเดิมพัน)
+      // Render Bet History Table
       const betHtml = (Array.isArray(bets) && bets.length > 0) ? `
-        <div class="table-container">
-          <table class="details-table">
+        <div class="table-scroll">
+          <table class="insp-table">
             <thead>
               <tr>
-                <th>คู่แข่งขัน</th>
-                <th style="text-align:center;">ตัวเลือก</th>
-                <th style="text-align:right;">ยอดเดิมพัน</th>
-                <th style="text-align:center;">ผลลัพธ์</th>
+                <th>Match</th>
+                <th style="text-align:center;">Pick</th>
+                <th style="text-align:right;">Wager</th>
+                <th style="text-align:center;">Result</th>
               </tr>
             </thead>
             <tbody>
               ${bets.map((bet: any) => {
-                const resColor = bet.result === 'win' ? '#10b981' : (bet.result === 'loss' ? '#f43f5e' : '#94a3b8');
+                const resultColor = bet.result === 'win' ? '#10b981' : (bet.result === 'loss' ? '#f43f5e' : '#94a3b8');
                 return `
                 <tr>
-                  <td>
-                    <div style="font-weight:800; color:#333;">${bet.home_team} vs ${bet.away_team}</div>
-                    <div class="time-txt">${new Date(bet.created_at).toLocaleDateString('th-TH')}</div>
-                  </td>
+                  <td><div class="bold">${bet.home_team} vs ${bet.away_team}</div><div class="small-grey">${new Date(bet.created_at).toLocaleDateString('th-TH')}</div></td>
                   <td style="text-align:center;"><span class="pick-tag">${bet.pick || '-'}</span></td>
-                  <td style="text-align:right; font-weight:800;">฿${Number(bet.amount).toLocaleString()}</td>
-                  <td style="text-align:center;"><span class="res-tag" style="background:${resColor}">${bet.result?.toUpperCase() || 'WAITING'}</span></td>
+                  <td style="text-align:right;" class="bold">฿${Number(bet.amount).toLocaleString()}</td>
+                  <td style="text-align:center;"><span class="res-tag" style="background:${resultColor}">${(bet.result || 'PENDING').toUpperCase()}</span></td>
                 </tr>`;
               }).join('')}
             </tbody>
           </table>
-        </div>` : '<p class="no-data">ไม่พบประวัติการเดิมพัน</p>';
+        </div>` : '<div class="empty-box">ไม่พบประวัติการเดิมพัน</div>';
 
       Swal.fire({
-        title: `<div class="inspector-title">USER INSPECTOR</div>`,
-        width: '95%',
+        title: `<div class="insp-title">USER INSPECTOR</div>`,
+        width: '900px',
         confirmButtonText: "CLOSE",
         confirmButtonColor: "#127447",
         html: `
           <style>
-            .inspector-title { font-size:20px; font-weight:900; color:#127447; border-bottom:2px solid #eee; padding-bottom:10px; margin-bottom:10px; }
-            .user-header-card { border: 2px solid #127447; border-radius:15px; padding:15px; text-align:left; margin-bottom:15px; }
-            .header-label { font-size:10px; font-weight:900; color:#127447; text-transform:uppercase; margin-bottom:5px; }
-            .header-value { font-size:24px; font-weight:900; color:#127447; }
-            .tab-container { display:flex; gap:5px; margin-bottom:15px; border-bottom: 2px solid #f1f5f9; }
-            .tab-btn { flex:1; padding:12px; font-size:12px; font-weight:900; cursor:pointer; border:none; background:none; color:#94a3b8; text-transform:uppercase; }
-            .tab-btn.active { color:#127447; border-bottom: 4px solid #127447; }
-            .table-container { max-height:450px; overflow-y:auto; border-radius:10px; }
-            .details-table { width:100%; border-collapse:collapse; font-size:12px; }
-            .details-table th { background:#f8f9fa; padding:12px; text-align:left; color:#666; position:sticky; top:0; font-size:10px; text-transform:uppercase; }
-            .details-table td { padding:12px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
-            .date-txt { font-weight:800; color:#333; }
-            .time-txt { font-size:10px; color:#999; }
-            .match-info { font-size:11px; color:#127447; font-weight:700; margin-top:3px; }
-            .status-label { font-size:10px; font-weight:800; color:#64748b; background:#f1f5f9; padding:2px 8px; border-radius:4px; }
-            .pick-tag { background:#f0fdf4; border:1px solid #127447; color:#127447; padding:2px 6px; border-radius:4px; font-weight:900; font-size:10px; }
-            .res-tag { color:white; padding:3px 8px; border-radius:6px; font-size:9px; font-weight:900; }
-            .no-data { padding:40px; text-align:center; color:#94a3b8; font-weight:bold; }
+            .insp-title { font-weight:900; color:#127447; margin-bottom:10px; font-size:24px; }
+            .user-info-card { border: 2.5px solid #127447; border-radius:15px; padding:15px; text-align:left; margin-bottom:20px; }
+            .info-label { font-size:11px; font-weight:900; color:#127447; text-transform:uppercase; margin-bottom:2px; }
+            .info-value { font-size:28px; font-weight:900; color:#127447; }
+            .tab-wrapper { display:flex; gap:10px; margin-bottom:15px; border-bottom: 2px solid #eee; }
+            .tab-item { flex:1; padding:12px; font-weight:900; cursor:pointer; border:none; background:none; color:#bbb; text-transform:uppercase; font-size:13px; transition:0.3s; }
+            .tab-item.active { color:#127447; border-bottom: 4px solid #127447; }
+            .table-scroll { max-height:450px; overflow-y:auto; border-radius:10px; }
+            .insp-table { width:100%; border-collapse:collapse; font-size:13px; text-align:left; }
+            .insp-table th { background:#f9f9f9; padding:12px; color:#777; font-size:10px; text-transform:uppercase; position:sticky; top:0; z-index:1; border-bottom:1px solid #eee; }
+            .insp-table td { padding:12px; border-bottom:1px solid #f5f5f5; vertical-align:middle; }
+            .bold { font-weight:800; color:#333; }
+            .bold-large { font-weight:900; font-size:15px; color:#222; }
+            .small-grey { font-size:10px; color:#999; }
+            .small-green { font-size:11px; color:#127447; font-weight:700; margin-top:3px; }
+            .badge-status { font-size:10px; font-weight:800; color:#666; background:#eee; padding:3px 8px; border-radius:5px; }
+            .pick-tag { background:#f0fdf4; border:1px solid #127447; color:#127447; padding:2px 8px; border-radius:5px; font-weight:900; font-size:11px; }
+            .res-tag { color:white; padding:4px 10px; border-radius:6px; font-size:10px; font-weight:900; display:inline-block; min-width:60px; }
+            .empty-box { padding:50px; text-align:center; font-weight:bold; color:#ccc; }
           </style>
           
-          <div class="user-header-card">
-            <div class="header-label">Username: ${user.username}</div>
-            <div class="header-value">฿${Number(user.credit || 0).toLocaleString()}</div>
+          <div class="user-info-card">
+            <div class="info-label">Username: ${user.username}</div>
+            <div class="info-value">฿${Number(user.credit || 0).toLocaleString()}</div>
           </div>
 
-          <div class="tab-container">
-            <button id="t-fin" class="tab-btn active" onclick="switchInspectorTab('fin')">Financials</button>
-            <button id="t-bet" class="tab-btn" onclick="switchInspectorTab('bet')">Bet History</button>
+          <div class="tab-wrapper">
+            <button id="t-fin" class="tab-item active" onclick="window.switchInspectorTab('fin')">FINANCIALS</button>
+            <button id="t-bet" class="tab-item" onclick="window.switchInspectorTab('bet')">BET HISTORY</button>
           </div>
 
-          <div id="c-fin">${txHtml}</div>
-          <div id="c-bet" style="display:none;">${betHtml}</div>
+          <div id="box-fin">${txHtml}</div>
+          <div id="box-bet" style="display:none;">${betHtml}</div>
 
           <script>
-            function switchInspectorTab(type) {
-              const finBtn = document.getElementById('t-fin');
-              const betBtn = document.getElementById('t-bet');
-              const finContent = document.getElementById('c-fin');
-              const betContent = document.getElementById('c-bet');
+            // ย้ายฟังก์ชันมาผูกกับ window เพื่อป้องกัน Scope Error
+            window.switchInspectorTab = function(type) {
+              const finT = document.getElementById('t-fin');
+              const betT = document.getElementById('t-bet');
+              const finB = document.getElementById('box-fin');
+              const betB = document.getElementById('box-bet');
+              
               if(type === 'fin') {
-                finBtn.classList.add('active'); betBtn.classList.remove('active');
-                finContent.style.display = 'block'; betContent.style.display = 'none';
+                finT.classList.add('active'); betT.classList.remove('active');
+                finB.style.display = 'block'; betB.style.display = 'none';
               } else {
-                betBtn.classList.add('active'); finBtn.classList.remove('active');
-                betContent.style.display = 'block'; finContent.style.display = 'none';
+                betT.classList.add('active'); finT.classList.remove('active');
+                betB.style.display = 'block'; finB.style.display = 'none';
               }
             }
-            window.switchInspectorTab = switchInspectorTab;
           </script>
         `,
         customClass: { popup: 'rounded-[2rem]' }
       });
-
     } catch (err) {
-      console.error(err);
-      Swal.fire("Error", "ไม่สามารถโหลดข้อมูลได้ หรือการเชื่อมต่อมีปัญหา", "error");
+      Swal.fire("Error", "เกิดข้อผิดพลาดในการดึงข้อมูล", "error");
     }
   };
 
   // --- 3. ฟังก์ชันปรับเครดิต ---
   const handleCredit = async (user: any) => {
     const { value: amount } = await Swal.fire({
-      title: 'ADJUST CREDIT',
+      title: '<span style="font-weight:900;">ADJUST CREDIT</span>',
       input: 'number',
       inputLabel: `Username: ${user.username}`,
-      inputPlaceholder: 'ใส่จำนวนเงิน (เช่น 100 หรือ -100)',
+      inputPlaceholder: 'Enter amount (e.g. 100 or -50)',
       showCancelButton: true,
       confirmButtonColor: '#127447',
-      confirmButtonText: 'CONFIRM'
+      confirmButtonText: 'CONFIRM',
+      customClass: { popup: 'rounded-[2rem]' }
     });
 
     if (amount) {
@@ -240,12 +239,12 @@ export default function AdminUsersPage() {
   ) || [];
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] p-4 lg:p-10">
-      {/* Header Section */}
+    <div className="min-h-screen bg-[#f8f9fa] p-4 lg:p-10 font-sans">
+      {/* Header */}
       <div className="flex flex-col lg:flex-row justify-between items-center gap-6 mb-12">
         <div>
           <h1 className="text-4xl lg:text-6xl font-black italic text-[#127447] tracking-tighter uppercase">Members</h1>
-          <p className="text-zinc-400 font-bold text-xs tracking-widest uppercase mt-2">Admin Management Panel</p>
+          <p className="text-zinc-400 font-bold text-xs tracking-widest uppercase mt-2">Member Database Management</p>
         </div>
         
         <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
@@ -253,7 +252,7 @@ export default function AdminUsersPage() {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
             <input 
               className="w-full bg-white border-none rounded-2xl py-4 pl-12 pr-6 shadow-sm focus:ring-2 focus:ring-[#127447] outline-none font-bold"
-              placeholder="Search by name or phone..."
+              placeholder="Search by username or phone..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -267,12 +266,12 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
-      {/* Grid of Users */}
+      {/* User Grid */}
       <div className="grid grid-cols-1 gap-6">
         {isLoading ? (
           <div className="text-center py-20">
             <Loader2 className="animate-spin inline text-[#127447]" size={40} />
-            <p className="mt-4 font-bold text-zinc-400">LOADING DATABASE...</p>
+            <p className="mt-4 font-bold text-zinc-400 uppercase tracking-widest">Loading Database...</p>
           </div>
         ) : (
           filteredUsers.map((user: any) => (
