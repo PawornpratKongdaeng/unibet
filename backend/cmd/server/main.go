@@ -19,14 +19,13 @@ func main() {
 
 	// 2. Setup Fiber App
 	app := fiber.New(fiber.Config{
-		// ✅ เพิ่มลิมิตเป็น 10MB ให้ตรงกับ Nginx
 		BodyLimit: 10 * 1024 * 1024,
 	})
 
-	// 3. Middleware: CORS (แก้ไขตรงนี้ ✅)
+	// 3. Middleware: CORS
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "https://thunibet.com",
-		AllowCredentials: false, // เปลี่ยนเป็น false
+		AllowOrigins:     "http://localhost:3000",
+		AllowCredentials: false,
 	}))
 
 	// 4. Setup Routes
@@ -37,9 +36,25 @@ func main() {
 		cron.Recover(cron.DefaultLogger),
 	))
 
+	// Task 1: ตรวจสอบผลและจ่ายเงิน (ทุก 5 นาที)
 	_, err := c.AddFunc("*/5 * * * *", func() {
-		log.Println("⏰ [Cron] Task Started: Checking match results...")
+		log.Println("⏰ [Cron] Task: Auto-Settlement running...")
 		services.AutoSettlement()
+	})
+
+	// Task 2: ดึงแมตช์ใหม่จาก API มาลง DB (ทุก 10 นาที) ✅ เพิ่มส่วนนี้
+	_, err = c.AddFunc("*/10 * * * *", func() {
+		log.Println("⏰ [Cron] Task Started: Syncing matches...")
+
+		// ✅ เรียกใช้ผ่าน services (ตรวจสอบให้มั่นใจว่า import github.com/.../services มาแล้ว)
+		// ❌ ห้ามตั้งชื่อตัวแปรว่า SyncMatchesFromAPI := services.SyncMatchesFromAPI("moung")
+		errSync := services.SyncMatchesFromAPI("moung")
+
+		if errSync != nil {
+			log.Printf("❌ [Cron] Sync Error: %v", errSync)
+		} else {
+			log.Println("✅ [Cron] Sync Completed")
+		}
 	})
 
 	if err != nil {
@@ -47,13 +62,12 @@ func main() {
 	}
 
 	c.Start()
-	log.Println("🚀 Cron Job: Running every 5 minutes")
+	log.Println("🚀 Cron System: Active (Settlement & Sync)")
 
-	// 6. Start Server (แก้ไขตรงนี้ ✅)
-	// ดึงค่า Port จากระบบ ถ้าไม่มีให้ใช้ 8080 (Koyeb มักจะใช้ค่า PORT เป็นหลัก)
+	// 6. Start Server
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8000" // เปลี่ยนจาก 8000 เป็น 8080 เพื่อความชัวร์
+		port = "8000"
 	}
 
 	log.Printf("📡 Server is starting on port %s", port)

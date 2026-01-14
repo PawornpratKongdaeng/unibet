@@ -1,99 +1,142 @@
 package handlers
 
 import (
+	"fmt"
 	"log"
-	"os" // เพิ่ม os เพื่ออ่าน Environment Variables
+	"sync"
 	"time"
 
 	"github.com/PawornpratKongdaeng/soccer/database"
 	"github.com/PawornpratKongdaeng/soccer/models"
 	"github.com/go-resty/resty/v2"
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm/clause"
 )
 
-// ใช้ global client ตัวเดียวเพื่อประหยัด Resource
-var client = resty.New().SetTimeout(10 * time.Second)
+// ตั้งค่า Client และ Cache
+var (
+	client     = resty.New().SetTimeout(15 * time.Second)
+	matchCache *models.HtayResponse // เก็บข้อมูลใน RAM
+	lastUpdate time.Time            // เวลาอัปเดตล่าสุด
+	cacheMutex sync.RWMutex         // ล็อคป้องกัน Race Condition
+)
 
-// ฟังก์ชันช่วยดึง API Key (ถ้าไม่มีใน Env ให้ใช้ demoapi)
-func getAPIKey() string {
-	key := os.Getenv("HTAY_API_KEY")
-	if key == "" {
-		return "demoapi"
-	}
-	return key
-}
-
+// GetMatches: ดึงข้อมูลบอล (Proxy + Caching + Auto Sync)
 func GetMatches(c *fiber.Ctx) error {
 	path := c.Params("path")
-	apiKey := getAPIKey()
-	url := "https://htayapi.com/mmk-autokyay/v3/" + path + "?key=" + apiKey
-
-	var result interface{}
-	resp, err := client.R().
-		// ✅ จำลองว่าเป็น Browser เพื่อป้องกันการโดนบล็อก
-		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36").
-		SetResult(&result).
-		Get(url)
-
-	if err != nil {
-		log.Printf("🚨 Network Error: %v", err)
-		return c.Status(500).JSON(fiber.Map{"error": "Internal Server Error"})
+	if path == "" || path == "feed" {
+		path = "moung"
 	}
 
+	// 1. เช็ค Cache (ถ้าข้อมูลไม่เก่าเกิน 15 วินาที ใช้ของเดิม)
+	cacheMutex.RLock()
+	if time.Since(lastUpdate) < 15*time.Second && matchCache != nil {
+		defer cacheMutex.RUnlock()
+		// log.Println("✅ Serving from Cache") // เปิด log นี้ถ้าอยากเช็คว่า cache ทำงานไหม
+		return c.JSON(matchCache)
+	}
+	cacheMutex.RUnlock()
+
+	// 2. ดึงจาก External API
+	apiKey := "eXBW5dl32piS2UbN75U1vikjWJJ9v7Ke"
+
+	// ⚠️ แก้ URL: ตัด /v3 ออก (ถ้า API จริงไม่มี /v3 ตรงนี้)
+	// ลองเช็ค URL นี้ใน Browser ดูก่อนว่าได้ JSON ไหม: https://htayapi.com/mmk-autokyay/moung?key=...
+	url := fmt.Sprintf("https://htayapi.com/mmk-autokyay/%s?key=%s", path, apiKey)
+
+	var apiResponse models.HtayResponse
+
+	resp, err := client.R().
+		SetHeader("User-Agent", "Mozilla/5.0").
+		SetResult(&apiResponse). // Auto Unmarshal JSON ใส่ตัวแปร
+		Get(url)
+
+	// --- 🔍 ส่วนดักจับ Error (สำคัญมาก) ---
+	if err != nil {
+		log.Printf("🔥 Network Error: %v", err)
+		return c.Status(500).JSON(fiber.Map{"error": "Cannot connect to external API", "details": err.Error()})
+	}
+
+	// ถ้า Status ไม่ใช่ 200 (เช่น 404, 403, 500 จากเว็บพม่า)
 	if resp.IsError() {
-		log.Printf("⚠️ API External Error [%d]: %s", resp.StatusCode(), resp.String())
+		log.Printf("🔥 External API Error: Status %d", resp.StatusCode())
+		log.Printf("🔥 Body: %s", resp.Body()) // ปริ้นให้เห็นว่าเขาตอบอะไรมา
 		return c.Status(resp.StatusCode()).JSON(fiber.Map{
-			"error":      "API ภายนอกปฏิเสธการเชื่อมต่อ",
-			"debug_info": resp.String(),
+			"error":   "External API returned error",
+			"status":  resp.StatusCode(),
+			"message": string(resp.Body()), // ส่งข้อความ error กลับไปให้ Frontend เห็น
+		})
+	}
+	// -------------------------------------
+
+	// 3. อัปเดต Cache
+	cacheMutex.Lock()
+	matchCache = &apiResponse
+	lastUpdate = time.Now()
+	cacheMutex.Unlock()
+
+	// 4. Background Sync ลง DB
+	// เช็คก่อนว่ามี Data และ Matches ไหม กัน Panic
+	if apiResponse.Data.Matches != nil && len(apiResponse.Data.Matches) > 0 {
+		go syncMatchesToDB(apiResponse.Data.Matches)
+	} else {
+		log.Println("⚠️ Warning: No matches found in API response")
+	}
+
+	return c.JSON(apiResponse)
+}
+
+func syncMatchesToDB(items []models.HtayMatch) {
+	var dbMatches []models.Match
+
+	for _, item := range items {
+		// ป้องกัน Panic กรณีข้อมูลบาง field เป็น null
+		homeName := "Unknown"
+		if item.Home.EngName != "" {
+			homeName = item.Home.EngName
+		}
+
+		awayName := "Unknown"
+		if item.Away.EngName != "" {
+			awayName = item.Away.EngName
+		}
+
+		leagueName := "Unknown"
+		if item.League.Name != "" {
+			leagueName = item.League.Name
+		}
+
+		matchIDStr := fmt.Sprintf("%d", item.MatchId)
+
+		parsedTime, err := time.Parse(time.RFC3339, item.StartTime)
+		if err != nil {
+			// ถ้า parse ไม่ได้ ให้ลองใช้เวลาปัจจุบัน หรือข้าม
+			log.Printf("⚠️ Date Parse Error for match %s: %v", matchIDStr, err)
+			continue
+		}
+
+		dbMatches = append(dbMatches, models.Match{
+			MatchID:   matchIDStr,
+			HomeTeam:  homeName,
+			AwayTeam:  awayName,
+			MatchTime: parsedTime.Format("15:04"),
+			StartTime: parsedTime,
+			Status:    "OPEN",
+			League:    leagueName,
+			UpdatedAt: time.Now(),
 		})
 	}
 
-	return c.JSON(result)
-}
+	if len(dbMatches) > 0 {
+		err := database.DB.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "match_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"home_team", "away_team", "start_time", "league", "updated_at", "status"}),
+		}).CreateInBatches(&dbMatches, 100).Error
 
-func SyncMatches() {
-	log.Println("🔄 [Sync] Fetching fixtures from API...")
-
-	apiKey := getAPIKey()
-	url := "https://htayapi.com/mmk-autokyay/v3/moung?key=" + apiKey
-
-	var apiResponse struct {
-		Data []struct {
-			MatchID   string `json:"match_id"`
-			HomeName  string `json:"home_name"`
-			AwayName  string `json:"away_name"`
-			HomeLogo  string `json:"home_logo"`
-			AwayLogo  string `json:"away_logo"`
-			StartTime string `json:"start_time"`
-		} `json:"data"`
+		if err != nil {
+			log.Printf("⚠️ DB Sync Error: %v", err)
+		} else {
+			// log.Printf("✅ Synced %d matches", len(dbMatches))
+		}
 	}
-
-	// ใช้ global client (ไม่ต้องสร้างใหม่ข้างในนี้)
-	_, err := client.R().
-		SetHeader("User-Agent", "Mozilla/5.0").
-		SetResult(&apiResponse).
-		Get(url)
-
-	if err != nil {
-		log.Println("❌ [Sync] API Error:", err)
-		return
-	}
-
-	if len(apiResponse.Data) == 0 {
-		log.Println("⚠️ [Sync] No data received from API")
-		return
-	}
-
-	for _, m := range apiResponse.Data {
-		// ✅ ใช้ MatchID จาก API เป็นตัวเช็คในฐานข้อมูล (ถ้ามีแล้วให้ Update ถ้าไม่มีให้ Create)
-		database.DB.Where(models.Match{MatchID: m.MatchID}).Assign(models.Match{
-			HomeTeam: m.HomeName,
-			AwayTeam: m.AwayName,
-			HomeLogo: m.HomeLogo,
-			AwayLogo: m.AwayLogo,
-			// เพิ่มฟิลด์อื่นๆ ตาม Model ของคุณที่นี่
-		}).FirstOrCreate(&models.Match{})
-	}
-
-	log.Printf("✅ [Sync] Updated %d matches in database", len(apiResponse.Data))
 }

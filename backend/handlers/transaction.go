@@ -121,29 +121,28 @@ func CreateWithdraw(c *fiber.Ctx) error {
 }
 
 // [ADMIN] อนุมัติการฝาก (Approve Deposit)
-func ApproveDeposit(c *fiber.Ctx) error {
-	txID := c.Params("id")
+func ApproveDepositSlipOnly(c *fiber.Ctx) error {
+	id := c.Params("id")
 
 	return database.DB.Transaction(func(tx *gorm.DB) error {
 		var transaction models.Transaction
-		if err := tx.First(&transaction, txID).Error; err != nil {
+		if err := tx.First(&transaction, id).Error; err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "ไม่พบรายการธุรกรรม"})
+		}
+
+		if transaction.Status != "pending" {
+			return c.Status(400).JSON(fiber.Map{"error": "รายการนี้ถูกดำเนินการไปแล้ว"})
+		}
+
+		// อัปเดตสถานะเป็น verified หรือ approved โดย "ไม่บวก Credit"
+		transaction.Status = "approved"
+		transaction.Note = "สลิปถูกต้อง (รอเอเย่นต์เติมเงินเข้าระบบ)"
+
+		if err := tx.Save(&transaction).Error; err != nil {
 			return err
 		}
 
-		if transaction.Status != "pending" || transaction.Type != "deposit" {
-			return fmt.Errorf("รายการนี้ถูกดำเนินการไปแล้ว")
-		}
-
-		// 1. อัปเดตสถานะ Transaction
-		tx.Model(&transaction).Update("status", "approved")
-
-		// 2. เพิ่มเครดิตให้ลูกค้า
-		if err := tx.Model(&models.User{}).Where("id = ?", transaction.UserID).
-			Update("credit", gorm.Expr("credit + ?", transaction.Amount)).Error; err != nil {
-			return err
-		}
-
-		return c.JSON(fiber.Map{"message": "อนุมัติยอดฝากเรียบร้อย"})
+		return c.JSON(fiber.Map{"message": "ตรวจสอบสลิปสำเร็จ สถานะเปลี่ยนเป็นอนุมัติแล้ว"})
 	})
 }
 
@@ -172,4 +171,49 @@ func RejectWithdraw(c *fiber.Ctx) error {
 
 		return c.JSON(fiber.Map{"message": "ปฏิเสธรายการและคืนเครดิตเรียบร้อย"})
 	})
+}
+func GetLatestTransactions(c *fiber.Ctx) error {
+	var transactions []struct {
+		models.Transaction
+		Username string `json:"to_user"` // เพื่อให้ตรงกับ frontend: tx.to_user
+	}
+
+	// ดึงข้อมูลธุรกรรมล่าสุด พร้อม Join ชื่อผู้ใช้งาน
+	// กรองเฉพาะรายการที่อนุมัติแล้ว (approved) หรือทั้งหมดก็ได้ตามต้องการ
+	err := database.DB.Table("transactions").
+		Select("transactions.*, users.username as username").
+		Joins("left join users on users.id = transactions.user_id").
+		Order("transactions.created_at desc").
+		Limit(10).
+		Scan(&transactions).Error
+
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถดึงข้อมูลได้"})
+	}
+
+	return c.JSON(transactions)
+}
+func GetAllTransactionLogs(c *fiber.Ctx) error {
+	type TransactionLog struct {
+		models.Transaction
+		ToUser    string `json:"to_user"`
+		FromAgent string `json:"from_agent"`
+	}
+
+	var logs []TransactionLog
+
+	// Double Join เพื่อดึงชื่อ Username ของทั้งคนรับ (u) และคนโอน (a)
+	err := database.DB.Table("transactions").
+		Select("transactions.*, u.username as to_user, a.username as from_agent").
+		Joins("left join users u on u.id = transactions.user_id").
+		Joins("left join users a on a.id = transactions.admin_id").
+		Order("transactions.created_at desc").
+		Limit(100).
+		Scan(&logs).Error
+
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถดึงข้อมูลได้"})
+	}
+
+	return c.JSON(logs)
 }

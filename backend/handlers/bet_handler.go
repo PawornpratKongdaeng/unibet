@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"math"
 	"strconv"
 
 	"github.com/PawornpratKongdaeng/soccer/database"
@@ -10,30 +11,32 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// โครงสร้างรับข้อมูลที่รองรับทั้ง Single และ Mixplay
+// โครงสร้างรับข้อมูล
 type PlaceBetRequest struct {
 	BetType     string  `json:"bet_type"`
-	TotalStake  float64 `json:"total_stake"` // ตรวจสอบตัวสะกด และห้ามมีช่องว่างหลัง json:
+	TotalStake  float64 `json:"total_stake"`
 	TotalPayout float64 `json:"total_payout"`
 	TotalRisk   float64 `json:"total_risk"`
 
-	MatchID  string  `json:"match_id"`
-	HomeTeam string  `json:"home_team"`
-	AwayTeam string  `json:"away_team"`
-	Pick     string  `json:"pick"`
-	Odds     float64 `json:"odds"`
-	Hdp      string  `json:"hdp"`
+	MatchID     string  `json:"match_id"`
+	HomeTeam    string  `json:"home_team"`
+	AwayTeam    string  `json:"away_team"`
+	Pick        string  `json:"pick"`
+	Hdp         float64 `json:"hdp"`
+	Price       int     `json:"price"`         // ค่าน้ำพม่า เช่น -80, 50
+	IsHomeUpper bool    `json:"is_home_upper"` // ทีมเจ้าบ้านเป็นทีมต่อหรือไม่
 
 	Items []ParlayItemRequest `json:"items"`
 }
 
 type ParlayItemRequest struct {
-	MatchID  string  `json:"match_id"`
-	HomeTeam string  `json:"home_team"`
-	AwayTeam string  `json:"away_team"`
-	Pick     string  `json:"side"` // "home", "away", "over", "under"
-	Odds     float64 `json:"odds"`
-	Hdp      string  `json:"hdp"`
+	MatchID     string  `json:"match_id"`
+	HomeTeam    string  `json:"home_team"`
+	AwayTeam    string  `json:"away_team"`
+	Pick        string  `json:"side"`
+	Hdp         float64 `json:"hdp"`
+	Price       int     `json:"price"`
+	IsHomeUpper bool    `json:"is_home_upper"`
 }
 
 func PlaceBet(c *fiber.Ctx) error {
@@ -43,93 +46,78 @@ func PlaceBet(c *fiber.Ctx) error {
 	}
 
 	// 1. ดึง userID จาก Locals (Middleware)
-	var userID uint
-	switch v := c.Locals("user_id").(type) {
-	case float64:
-		userID = uint(v)
-	case uint:
-		userID = v
-	default:
+	userID, ok := c.Locals("user_id").(uint)
+	if !ok {
 		return c.Status(401).JSON(fiber.Map{"error": "กรุณาเข้าสู่ระบบใหม่"})
 	}
 
-	// 2. ตรวจสอบยอดเงินขั้นต่ำ
 	if req.TotalStake <= 0 {
 		return c.Status(400).JSON(fiber.Map{"error": "ยอดเดิมพันต้องมากกว่า 0"})
 	}
 
-	// 3. เริ่ม Transaction เพื่อความปลอดภัยในการตัดเงิน
 	return database.DB.Transaction(func(tx *gorm.DB) error {
 		var user models.User
-		// Lock แถวของ User ไว้เพื่อป้องกันการกดเบิ้ล (Race Condition)
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&user, userID).Error; err != nil {
 			return c.Status(404).JSON(fiber.Map{"error": "ไม่พบผู้ใช้งาน"})
 		}
 
-		// ตรวจสอบเครดิต (ใช้ TotalRisk เพราะถ้าน้ำแดงจะหักเงินน้อยกว่ายอดแทง)
+		// ราคาพม่า: ถ้าน้ำแดง หักเงินตามยอด Risk (ยอดติดลบที่หักจริงน้อยกว่ายอดแทง)
 		amountToDeduct := req.TotalStake
 		if req.TotalRisk > 0 {
 			amountToDeduct = req.TotalRisk
 		}
 
 		if user.Credit < amountToDeduct {
-			return c.Status(400).JSON(fiber.Map{"error": "เครดิตของคุณไม่เพียงพอ"})
+			return c.Status(400).JSON(fiber.Map{"error": "เครดิตไม่เพียงพอ"})
 		}
 
 		balanceBefore := user.Credit
 		balanceAfter := user.Credit - amountToDeduct
 
-		// 4. ตัดเงิน User
 		if err := tx.Model(&user).Update("credit", balanceAfter).Error; err != nil {
 			return err
 		}
 
-		// 5. บันทึกข้อมูลแยกตามประเภท
 		if req.BetType == "single" {
-			// --- กรณีบอลเต็ง ---
 			mID, _ := strconv.ParseUint(req.MatchID, 10, 32)
-			hdpFloat, _ := strconv.ParseFloat(req.Hdp, 64)
-
 			bet := models.BetSlip{
-				UserID:   userID,
-				MatchID:  uint(mID),
-				HomeTeam: req.HomeTeam,
-				AwayTeam: req.AwayTeam,
-				Pick:     req.Pick,
-				Hdp:      hdpFloat,
-				Amount:   req.TotalStake,
-				Odds:     req.Odds,
-				Payout:   req.TotalPayout,
-				Status:   "pending",
+				UserID:      userID,
+				MatchID:     uint(mID),
+				HomeTeam:    req.HomeTeam,
+				AwayTeam:    req.AwayTeam,
+				Pick:        req.Pick,
+				Hdp:         req.Hdp,
+				Price:       req.Price,
+				IsHomeUpper: req.IsHomeUpper,
+				Amount:      req.TotalStake,
+				Payout:      req.TotalPayout,
+				Status:      "pending",
 			}
 			if err := tx.Create(&bet).Error; err != nil {
 				return err
 			}
 		} else {
-			// --- กรณีบอลชุด (Parlay) ---
 			ticket := models.ParlayTicket{
-				UserID:    userID,
-				Amount:    req.TotalStake,
-				Payout:    req.TotalPayout,
-				Status:    "pending",
-				CreatedAt: tx.NowFunc(),
+				UserID: userID,
+				Amount: req.TotalStake,
+				Payout: req.TotalPayout,
+				Status: "pending",
 			}
 			if err := tx.Create(&ticket).Error; err != nil {
 				return err
 			}
 
-			// บันทึกแต่ละคู่ในชุด
 			for _, item := range req.Items {
-				hdpVal, _ := strconv.ParseFloat(item.Hdp, 64)
 				parlayItem := models.ParlayItem{
-					TicketID: ticket.ID,
-					MatchID:  item.MatchID,
-					HomeTeam: item.HomeTeam, // หากใน Model ไม่มีฟิลด์นี้ ให้ลบออก
-					AwayTeam: item.AwayTeam, // หากใน Model ไม่มีฟิลด์นี้ ให้ลบออก
-					Hdp:      hdpVal,
-					Pick:     item.Pick,
-					Odds:     item.Odds,
-					Status:   "pending",
+					TicketID:    ticket.ID,
+					MatchID:     item.MatchID,
+					HomeTeam:    item.HomeTeam,
+					AwayTeam:    item.AwayTeam,
+					Hdp:         item.Hdp,
+					Price:       item.Price,
+					IsHomeUpper: item.IsHomeUpper,
+					Pick:        item.Pick,
+					Status:      "pending",
 				}
 				if err := tx.Create(&parlayItem).Error; err != nil {
 					return err
@@ -137,7 +125,6 @@ func PlaceBet(c *fiber.Ctx) error {
 			}
 		}
 
-		// 6. บันทึกประวัติ Transaction
 		tx.Create(&models.Transaction{
 			UserID:        userID,
 			Amount:        amountToDeduct,
@@ -147,143 +134,122 @@ func PlaceBet(c *fiber.Ctx) error {
 			BalanceAfter:  balanceAfter,
 		})
 
-		return c.JSON(fiber.Map{
-			"status":  "success",
-			"message": "วางเดิมพันสำเร็จ",
-			"credit":  balanceAfter,
-		})
+		return c.JSON(fiber.Map{"status": "success", "credit": balanceAfter})
 	})
 }
-func CalculateBetResult(match models.MatchResult, userPick string) string {
-	// 1. หาผลต่างประตู (Goal Difference)
-	diff := float64(match.Scores.FullTime.Home - match.Scores.FullTime.Away)
 
-	// 2. ดึงราคาต่อรอง (แปลงจาก string "-1" เป็น float -1.0)
-	hdp, _ := strconv.ParseFloat(match.Odds.Handicap.HomeLine, 64)
-
-	// 3. คิดผลสำหรับทีมต่อ (Home)
-	var homeResult string
-	finalPoint := diff + hdp // 0 (1-1) + (-1) = -1
-
-	if finalPoint > 0 {
-		homeResult = "win"
-	} else if finalPoint < 0 {
-		homeResult = "lost"
-	} else {
-		homeResult = "draw"
-	}
-
-	// 4. คืนค่าตามที่ User แทงไว้
-	if userPick == "home" {
-		return homeResult
-	} else {
-		// ถ้าทีมต่อแพ้/เสมอ ทีมรอง (Away) จะได้ผลตรงข้าม
-		if homeResult == "win" {
-			return "lost"
-		}
-		if homeResult == "lost" {
-			return "win"
-		}
-		return "draw"
-	}
-}
-func SettleBets(db *gorm.DB, results []models.MatchResult) error {
+func SettleBets(db *gorm.DB, results []models.HtayMatchResult) error {
 	for _, res := range results {
 		if res.Status != "completed" {
 			continue
 		}
 
-		// 1. คิดผลบอลเต็ง
+		// 1. คิดผลบอลเต็ง (Single Bet)
 		var bets []models.BetSlip
-		mIDUint, _ := strconv.ParseUint(res.ID, 10, 32)
-		db.Where("match_id = ? AND status = ?", uint(mIDUint), "pending").Find(&bets)
+		db.Where("match_id = ? AND status = ?", res.ID, "pending").Find(&bets)
 
 		for _, bet := range bets {
-			resultStatus := calculateScore(res, bet.Pick)
+			resultStatus := calculateBurmeseHandicap(
+				res.Scores.FullTime.Home,
+				res.Scores.FullTime.Away,
+				int(bet.Hdp),
+				bet.Price,
+				bet.IsHomeUpper,
+				bet.Pick,
+			)
+
 			db.Transaction(func(tx *gorm.DB) error {
 				tx.Model(&bet).Update("status", resultStatus)
-				if resultStatus == "win" {
-					tx.Model(&models.User{}).Where("id = ?", bet.UserID).Update("credit", gorm.Expr("credit + ?", bet.Payout))
-				} else if resultStatus == "draw" {
-					tx.Model(&models.User{}).Where("id = ?", bet.UserID).Update("credit", gorm.Expr("credit + ?", bet.Amount))
+
+				var refundAmount float64
+				priceFactor := math.Abs(float64(bet.Price)) / 100.0
+
+				switch resultStatus {
+				case "win":
+					refundAmount = bet.Payout
+				case "win_half":
+					// สูตร: คืนทุน + กำไรตามค่าน้ำ
+					refundAmount = bet.Amount + (bet.Amount * priceFactor)
+					if bet.Price < 0 { // กรณีน้ำแดง
+						riskAmount := bet.Amount * priceFactor
+						refundAmount = riskAmount + riskAmount
+					}
+				case "lost_half":
+					// สูตร: คืนทุนส่วนที่ไม่ได้เสียตามค่าน้ำ
+					refundAmount = bet.Amount * (1 - priceFactor)
+				case "draw":
+					refundAmount = bet.Amount
+				}
+
+				if refundAmount > 0 {
+					tx.Model(&models.User{}).Where("id = ?", bet.UserID).Update("credit", gorm.Expr("credit + ?", refundAmount))
 				}
 				return nil
 			})
 		}
 
-		// 2. คิดผลบอลสเต็ป
+		// 2. คิดผลบอลสเต็ป (Parlay - เฉพาะรายคู่)
 		var parlayItems []models.ParlayItem
 		db.Where("match_id = ? AND status = ?", res.ID, "pending").Find(&parlayItems)
 
 		for _, item := range parlayItems {
-			resultStatus := calculateScore(res, item.Pick)
+			resultStatus := calculateBurmeseHandicap(
+				res.Scores.FullTime.Home,
+				res.Scores.FullTime.Away,
+				int(item.Hdp),
+				item.Price,
+				item.IsHomeUpper,
+				item.Pick,
+			)
+
 			db.Transaction(func(tx *gorm.DB) error {
 				tx.Model(&item).Update("status", resultStatus)
-
-				var ticket models.ParlayTicket
-				if err := tx.Preload("Items").First(&ticket, item.TicketID).Error; err != nil {
-					return err
-				}
-
-				allFinished, anyLost := true, false
-				for _, itm := range ticket.Items {
-					if itm.Status == "pending" {
-						allFinished = false
-					}
-					if itm.Status == "lost" {
-						anyLost = true
-					}
-				}
-
-				if allFinished {
-					finalStatus := "win"
-					if anyLost {
-						finalStatus = "lost"
-					}
-					tx.Model(&ticket).Update("status", finalStatus)
-					if finalStatus == "win" {
-						tx.Model(&models.User{}).Where("id = ?", ticket.UserID).Update("credit", gorm.Expr("credit + ?", ticket.Payout))
-					}
-				}
+				// หมายเหตุ: การคิดเงินรวมของ Parlay Ticket แนะนำให้ทำแยกอีกฟังก์ชันเมื่อทุกคู่ใน Ticket จบแล้ว
 				return nil
 			})
 		}
 	}
 	return nil
 }
-func calculateScore(res models.MatchResult, pick string) string {
-	homeScore := res.Scores.FullTime.Home
-	awayScore := res.Scores.FullTime.Away
 
-	// แปลงราคาต่อรองจาก String เป็น Float (เช่น "-1" -> -1.0)
-	hdp, _ := strconv.ParseFloat(res.Odds.Handicap.HomeLine, 64)
+func calculateBurmeseHandicap(homeScore, awayScore int, odds int, price int, isHomeUpper bool, pick string) string {
+	diff := homeScore - awayScore
+	if !isHomeUpper {
+		diff = awayScore - homeScore
+	}
 
-	// หาผลต่างประตู
-	diff := float64(homeScore - awayScore)
-
-	var homeResult string
-	// สูตร: ผลต่างประตู + ราคาต่อรอง
-	finalPoint := diff + hdp
-
-	if finalPoint > 0 {
-		homeResult = "win"
-	} else if finalPoint < 0 {
-		homeResult = "lost"
+	var upperResult string
+	if diff > odds {
+		upperResult = "win"
+	} else if diff < odds {
+		upperResult = "lost"
 	} else {
-		homeResult = "draw"
+		// กรณีแต้มประตูเท่ากับแต้มต่อ (เสมอราคาพม่า)
+		if price < 0 {
+			upperResult = "lost_half"
+		} else {
+			upperResult = "win_half"
+		}
 	}
 
-	// ถ้า User แทงทีมเจ้าบ้าน (Home)
-	if pick == "home" {
-		return homeResult
+	// ตรวจสอบว่า User แทงฝั่งทีมต่อ (Upper) หรือไม่
+	isUserPickUpper := (pick == "home" && isHomeUpper) || (pick == "away" && !isHomeUpper)
+
+	if isUserPickUpper {
+		return upperResult
 	}
 
-	// ถ้า User แทงทีมเยือน (Away) ผลจะสลับกัน
-	if homeResult == "win" {
+	// ถ้าแทงทีมรอง ผลจะสลับกัน
+	switch upperResult {
+	case "win":
 		return "lost"
-	}
-	if homeResult == "lost" {
+	case "lost":
 		return "win"
+	case "win_half":
+		return "lost_half"
+	case "lost_half":
+		return "win_half"
+	default:
+		return "draw"
 	}
-	return "draw"
 }

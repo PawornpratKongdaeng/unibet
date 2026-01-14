@@ -13,6 +13,7 @@ interface UserCardProps {
   onCredit: (user: any) => void;
   onDelete: (id: string) => void;
   onBan: (id: string) => void;
+  onLock: () => void;
 }
 
 const UserCard = ({ user, onView, onCredit, onDelete, onBan }: UserCardProps) => {

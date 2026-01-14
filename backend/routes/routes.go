@@ -52,6 +52,7 @@ func SetupRoutes(app *fiber.App) {
 		admin.Patch("/users/:id", handlers.UpdateUser)
 		admin.Post("/users/:id/credit", handlers.AdjustUserBalance)
 		admin.Delete("/users/:id", handlers.DeleteUser)
+		admin.Post("/users", handlers.Register)
 
 		// Financial & Transactions
 		admin.Get("/finance/summary", handlers.GetFinanceSummary)
@@ -59,8 +60,11 @@ func SetupRoutes(app *fiber.App) {
 		admin.Get("/transactions/history", handlers.GetTransactionHistory)
 		admin.Post("/transactions/approve/:id", handlers.ApproveTransaction)
 		admin.Post("/transactions/reject/:id", handlers.RejectTransaction)
+		admin.Get("/transactions", handlers.GetLatestTransactions)
 		admin.Get("/users/:id/transactions", handlers.GetUserTransactions)
 		admin.Get("/users/:id/bets", handlers.GetUserBets) // ✅ ถูก (รูปแบบ Fiber)
+		admin.Post("/transactions/approve-only/:id", handlers.ApproveDepositSlipOnly)
+		admin.Get("/matches-summary", handlers.GetMatchesSummary)
 
 		// System Configuration
 		admin.Put("/config/bank", handlers.UpdateAdminBank)
@@ -69,5 +73,11 @@ func SetupRoutes(app *fiber.App) {
 		// Game & Settlement
 		admin.Get("/bets", handlers.GetAllBets)
 		admin.Post("/settle", services.ManualSettlement)
+
+		admin.Post("/users/:id/password", handlers.UpdatePassword) // ✅ เพิ่มสำหรับปุ่ม Password Change ในรูป
+		admin.Post("/users/:id/toggle-lock", handlers.ToggleUserLock)
+
+		admin.Get("/users/:id/bets", handlers.GetUserBetsWithDetails)
+		admin.Get("/matches-summary", handlers.GetMatchesSummary)
 	}
 }

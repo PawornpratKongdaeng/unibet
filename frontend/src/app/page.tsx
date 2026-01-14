@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { Trophy, Layers, Ticket, History, Download, Upload, Settings, PlayCircle, LogOut, Server, User, RefreshCcw } from "lucide-react";
 
 import Header from "../components/Header";
-import BetSlipModal from "../components/BetSlipModal";
+import BetSlipModal from "@/components/UniversalBetSlip";
 import { showToast } from "@/lib/sweetAlert";
 import { apiFetch } from "@/lib/api";
 import { useWallet } from "../context/WalletContext";

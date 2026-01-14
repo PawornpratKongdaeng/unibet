@@ -21,7 +21,7 @@ type User struct {
 	ParentID    *uint          `json:"parent_id"`
 	Share       float64        `gorm:"default:0" json:"share"`
 	Com         float64        `gorm:"default:0" json:"com"`
-	Status      string         `gorm:"default:active" json:"status"`
+	Status      string         `json:"status" gorm:"default:active"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`

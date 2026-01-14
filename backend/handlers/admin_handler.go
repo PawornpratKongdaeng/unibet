@@ -9,6 +9,7 @@ import (
 	"github.com/PawornpratKongdaeng/soccer/models"
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ✅ 1. เพิ่มฟังก์ชัน GetUserID เพื่อดึงข้อมูลจาก Locals (ที่ Middleware เซตไว้)
@@ -82,22 +83,70 @@ func GetAllBets(c *fiber.Ctx) error {
 }
 
 // POST /api/v3/admin/users/:id/credit
+// [ADMIN/AGENT] เติมเงินให้ลูกค้า (หักจากยอดเครดิตของ Agent)
 func AdjustUserBalance(c *fiber.Ctx) error {
-	targetID := c.Params("id")
+	// 1. ดึง ID ของ Agent ที่กำลัง Login อยู่
+	agentID := c.Locals("user_id").(uint)
+	targetUserID := c.Params("id")
+
 	type Request struct {
 		Amount float64 `json:"amount"`
+		Type   string  `json:"type"`
+		Note   string  `json:"note"`
 	}
-	var req Request
-	if err := c.BodyParser(&req); err != nil {
+
+	var body Request
+	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
 	}
 
-	// อัปเดตเครดิตใน Postgres
-	if err := database.DB.Model(&models.User{}).Where("id = ?", targetID).
-		UpdateColumn("credit", gorm.Expr("credit + ?", req.Amount)).Error; err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "อัปเดตไม่สำเร็จ"})
-	}
-	return c.JSON(fiber.Map{"message": "ปรับปรุงเครดิตสำเร็จ"})
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		var agent models.User
+		var targetUser models.User
+
+		// 2. Lock และเช็คเครดิต Agent (คนที่กดเติม)
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&agent, agentID).Error; err != nil {
+			return fmt.Errorf("ไม่พบข้อมูล Agent")
+		}
+
+		// 3. Lock และเช็คข้อมูลลูกค้า (คนที่จะรับเงิน)
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&targetUser, targetUserID).Error; err != nil {
+			return fmt.Errorf("ไม่พบข้อมูลลูกค้า")
+		}
+
+		if body.Type == "deposit" {
+			// เช็คว่า Agent มีเงินพอให้หักไหม
+			if agent.Credit < body.Amount {
+				return fmt.Errorf("เครดิตของคุณไม่เพียงพอสำหรับการเติมเงิน")
+			}
+
+			// --- ขั้นตอนการโยกเงิน ---
+			// หักเงิน Agent
+			tx.Model(&agent).Update("credit", gorm.Expr("credit - ?", body.Amount))
+			// เพิ่มเงิน User
+			tx.Model(&targetUser).Update("credit", gorm.Expr("credit + ?", body.Amount))
+
+		} else {
+			// กรณี Withdraw (ดึงเงินลูกค้ากลับเข้ากระเป๋า Agent)
+			if targetUser.Credit < body.Amount {
+				return fmt.Errorf("ยอดเงินลูกค้าไม่เพียงพอให้ดึงกลับ")
+			}
+			tx.Model(&targetUser).Update("credit", gorm.Expr("credit - ?", body.Amount))
+			tx.Model(&agent).Update("credit", gorm.Expr("credit + ?", body.Amount))
+		}
+
+		// 4. บันทึก Transaction Log (ฝั่ง User)
+		tx.Create(&models.Transaction{
+			UserID:       targetUser.ID,
+			Amount:       body.Amount,
+			Type:         body.Type,
+			Status:       "approved",
+			BalanceAfter: targetUser.Credit + body.Amount, // คำนวณยอดหลังทำรายการ
+			Note:         fmt.Sprintf("[AGENT:%s] %s", agent.Username, body.Note),
+		})
+
+		return c.JSON(fiber.Map{"message": "ดำเนินการเรียบร้อย"})
+	})
 }
 
 // DELETE /api/v3/admin/users/:id

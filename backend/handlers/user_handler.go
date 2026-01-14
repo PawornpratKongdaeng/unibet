@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/PawornpratKongdaeng/soccer/database"
 	"github.com/PawornpratKongdaeng/soccer/models"
 	"github.com/gofiber/fiber/v2"
@@ -65,44 +68,77 @@ func GetMe(c *fiber.Ctx) error {
 	return c.JSON(user)
 }
 func UpdateUserCredit(c *fiber.Ctx) error {
-	userID := c.Params("id")
+	// 1. ดึง ID ของแอดมินที่ล็อกอินอยู่
+	rawAgentID := c.Locals("user_id")
+	var agentID uint
+	if v, ok := rawAgentID.(float64); ok {
+		agentID = uint(v)
+	} else {
+		agentID = rawAgentID.(uint)
+	}
 
-	// รับค่าจาก Body (ที่ส่งมาจาก fetch)
+	targetUserID := c.Params("id")
+
 	type Request struct {
 		Amount float64 `json:"amount"`
+		Type   string  `json:"type"` // "deposit" หรือ "withdraw"
+		Note   string  `json:"note"`
 	}
-	var req Request
-	if err := c.BodyParser(&req); err != nil {
+	var body Request
+	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
 	}
 
-	// เริ่ม Transaction เพื่อความปลอดภัย
-	dbTx := database.DB.Begin()
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		var agent models.User
+		var user models.User
 
-	// 1. อัปเดตเครดิต (ใช้ gorm.Expr เพื่อป้องกัน Race Condition)
-	// หมายเหตุ: ตรวจสอบว่าใน DB ของคุณใช้ชื่อ "credit" หรือ "balance"
-	result := dbTx.Model(&models.User{}).Where("id = ?", userID).
-		UpdateColumn("credit", gorm.Expr("credit + ?", req.Amount))
-
-	if result.Error != nil {
-		dbTx.Rollback()
-		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถอัปเดตเครดิตได้"})
-	}
-
-	// 2. (แนะนำ) บันทึกประวัติการเติมเงิน (Audit Log)
-	// เพื่อให้เจ้าของเว็บเช็คได้ว่าแอดมินคนไหนเติมให้ใคร
-	/*
-		log := models.AdminLog{
-			AdminID: c.Locals("admin_id").(uint), // ดึง ID แอดมินจาก Middleware
-			Action:  "ADJUST_CREDIT",
-			Target:  userID,
-			Details: fmt.Sprintf("ปรับเครดิตจำนวน: %.2f", req.Amount),
+		if err := tx.First(&agent, agentID).Error; err != nil {
+			return err
 		}
-		dbTx.Create(&log)
-	*/
+		if err := tx.First(&user, targetUserID).Error; err != nil {
+			return err
+		}
 
-	dbTx.Commit()
-	return c.JSON(fiber.Map{"message": "อัปเดตเครดิตสำเร็จ"})
+		var newBalance float64
+		balanceBefore := user.Credit
+
+		if body.Type == "deposit" {
+			if agent.Credit < body.Amount {
+				return fmt.Errorf("ยอดเงินในสต็อกของคุณไม่เพียงพอ (คงเหลือ: %.2f)", agent.Credit)
+			}
+			// หักเงินเอเย่นต์ และ เพิ่มเงินยูสเซอร์
+			tx.Model(&agent).Update("credit", gorm.Expr("credit - ?", body.Amount))
+			tx.Model(&user).Update("credit", gorm.Expr("credit + ?", body.Amount))
+			newBalance = balanceBefore + body.Amount
+		} else {
+			if user.Credit < body.Amount {
+				return fmt.Errorf("ยอดเงินของลูกค้าไม่เพียงพอ")
+			}
+			// หักเงินยูสเซอร์ และ คืนเงินเข้าสต็อกเอเย่นต์
+			tx.Model(&user).Update("credit", gorm.Expr("credit - ?", body.Amount))
+			tx.Model(&agent).Update("credit", gorm.Expr("credit + ?", body.Amount))
+			newBalance = balanceBefore - body.Amount
+		}
+
+		// บันทึก Log
+		newTx := models.Transaction{
+			UserID:        user.ID,
+			AdminID:       &agentID,
+			Amount:        body.Amount,
+			Type:          body.Type,
+			Status:        "approved",
+			BalanceBefore: balanceBefore,
+			BalanceAfter:  newBalance,
+			Note:          body.Note,
+			CreatedAt:     time.Now(),
+		}
+
+		if err := tx.Create(&newTx).Error; err != nil {
+			return err
+		}
+		return c.JSON(fiber.Map{"message": "ดำเนินการสำเร็จ", "balance_after": newBalance})
+	})
 }
 func GetMyBets(c *fiber.Ctx) error {
 	userID := getIDFromLocals(c)

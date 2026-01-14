@@ -4,6 +4,7 @@ import (
 	"github.com/PawornpratKongdaeng/soccer/database"
 	"github.com/PawornpratKongdaeng/soccer/models"
 	"github.com/gofiber/fiber/v2"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -55,13 +56,13 @@ func UpdateAdminBank(c *fiber.Ctx) error {
 func GetPendingTransactions(c *fiber.Ctx) error {
 	var transactions []models.Transaction
 
-	// ❌ ผิด: .Preload("Username") -> Username เป็น string ไม่ใช่ struct relationship
-	// ✅ ถูก: .Preload("User") -> ต้องอ้างอิงชื่อ Field ใน struct Transaction
+	// ✅ ต้องมี .Preload("User") เพื่อดึงข้อมูลสมาชิกมาด้วย
 	result := database.DB.Preload("User").Where("status = ?", "pending").Find(&transactions)
 
 	if result.Error != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "ดึงข้อมูลล้มเหลว"})
+		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถดึงข้อมูลได้"})
 	}
+
 	return c.JSON(transactions)
 }
 
@@ -289,4 +290,159 @@ func GetUserFullBetHistory(c *fiber.Ctx) error {
 		"singles": singles,
 		"parlays": parlays,
 	})
+}
+func GetUserBetsWithDetails(c *fiber.Ctx) error {
+	userID := c.Params("id")
+	var tickets []models.ParlayTicket
+
+	// ✅ ใช้ .Preload("Items") เพื่อดึงรายชื่อคู่บอลในตั๋วสเต็ปออกมาด้วย
+	if err := database.DB.Preload("Items").Where("user_id = ?", userID).Find(&tickets).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch bets"})
+	}
+
+	return c.JSON(tickets)
+}
+
+func GetMatchesSummary(c *fiber.Ctx) error {
+	dateStr := c.Query("date")
+
+	type Result struct {
+		MatchID    string  `json:"match_id"`
+		HomeTeam   string  `json:"home_team"`
+		AwayTeam   string  `json:"away_team"`
+		TotalHome  float64 `json:"total_home"`
+		TotalAway  float64 `json:"total_away"`
+		TotalOver  float64 `json:"total_over"`
+		TotalUnder float64 `json:"total_under"`
+		TotalEven  float64 `json:"total_even"`
+	}
+
+	var summary []Result
+
+	err := database.DB.Raw(`
+		SELECT 
+			m.match_id, 
+			m.home_team, 
+			m.away_team,
+			COALESCE(SUM(CASE WHEN b.pick = 'home' THEN b.amount ELSE 0 END), 0) as total_home,
+			COALESCE(SUM(CASE WHEN b.pick = 'away' THEN b.amount ELSE 0 END), 0) as total_away,
+			COALESCE(SUM(CASE WHEN b.pick = 'over' THEN b.amount ELSE 0 END), 0) as total_over,
+			COALESCE(SUM(CASE WHEN b.pick = 'under' THEN b.amount ELSE 0 END), 0) as total_under,
+			COALESCE(SUM(CASE WHEN b.pick = 'draw' THEN b.amount ELSE 0 END), 0) as total_even
+		FROM matches m
+		LEFT JOIN bet_slips b ON CAST(m.match_id AS VARCHAR) = CAST(b.match_id AS VARCHAR)
+		WHERE DATE(m.start_time AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') = ?
+		-- ✅ เพิ่ม m.start_time เข้าไปใน GROUP BY ตรงนี้ครับ
+		GROUP BY m.match_id, m.home_team, m.away_team, m.start_time 
+		ORDER BY m.start_time ASC
+	`, dateStr).Scan(&summary).Error
+
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(summary)
+}
+func UpdatePassword(c *fiber.Ctx) error {
+	id := c.Params("id")
+	type Request struct {
+		Password string `json:"password"`
+	}
+	var req Request
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})
+	}
+
+	// Hash รหัสผ่านใหม่
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+
+	// อัปเดตลง Database
+	if err := database.DB.Model(&models.User{}).Where("id = ?", id).Update("password", string(hashedPassword)).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to update password"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Password updated successfully"})
+}
+
+// ToggleUserLock - สำหรับ ล็อค/ปลดล็อค ยูสเซอร์
+func ToggleUserLock(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var user models.User
+
+	// ค้นหายูสเซอร์ก่อน
+	if err := database.DB.First(&user, id).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
+	}
+
+	// สลับสถานะ (ถ้าเป็น locked ให้เป็น active, ถ้าอย่างอื่นให้เป็น locked)
+	newStatus := "locked"
+	if user.Status == "locked" {
+		newStatus = "active"
+	}
+
+	if err := database.DB.Model(&user).Update("status", newStatus).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to toggle lock"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Status updated", "status": newStatus})
+}
+
+// [ADMIN/AGENT] เติมเงินให้ลูกค้า (หักจากยอดเครดิตของ Agent)
+func GetExposureReport(c *fiber.Ctx) error {
+	// รับวันที่ต้องการดู เช่น 2026-01-12
+	dateStr := c.Query("date")
+	if dateStr == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "ต้องระบุวันที่ (date)"})
+	}
+
+	var results []models.MatchSummaryResponse
+
+	// Query: ดึงแมตช์ทั้งหมดในวันนั้น และ LEFT JOIN กับยอดเดิมพัน
+	// b.match_id ต้องตรงกับฟิลด์ในตารางเก็บยอดแทงของคุณ (เช่น bet_items หรือ parlay_items)
+	query := `
+		SELECT 
+			m.match_id, 
+			m.home_team, 
+			m.away_team, 
+			m.start_time,
+			COALESCE(SUM(CASE WHEN b.bet_type = 'home' THEN b.amount ELSE 0 END), 0) as total_home,
+			COALESCE(SUM(CASE WHEN b.bet_type = 'away' THEN b.amount ELSE 0 END), 0) as total_away,
+			COALESCE(SUM(CASE WHEN b.bet_type = 'over' THEN b.amount ELSE 0 END), 0) as total_over,
+			COALESCE(SUM(CASE WHEN b.bet_type = 'under' THEN b.amount ELSE 0 END), 0) as total_under
+		FROM matches m
+		LEFT JOIN bet_items b ON m.match_id = b.match_id
+		WHERE DATE(m.start_time AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') = ?
+		GROUP BY m.match_id, m.home_team, m.away_team, m.start_time
+		ORDER BY m.start_time ASC
+	`
+
+	if err := database.DB.Raw(query, dateStr).Scan(&results).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "DB Error: " + err.Error()})
+	}
+
+	return c.JSON(results)
+}
+func GetExposure(c *fiber.Ctx) error {
+	dateStr := c.Query("date")
+
+	var results []models.MatchSummaryResponse
+
+	err := database.DB.Raw(`
+        SELECT 
+            m.match_id, m.home_team, m.away_team, m.start_time,
+            COALESCE(SUM(CASE WHEN b.pick = 'home' THEN b.amount ELSE 0 END), 0) as total_home,
+            COALESCE(SUM(CASE WHEN b.pick = 'away' THEN b.amount ELSE 0 END), 0) as total_away,
+            COALESCE(SUM(CASE WHEN b.pick = 'over' THEN b.amount ELSE 0 END), 0) as total_over,
+            COALESCE(SUM(CASE WHEN b.pick = 'under' THEN b.amount ELSE 0 END), 0) as total_under
+        FROM matches m
+        LEFT JOIN bet_slips b ON CAST(m.match_id AS VARCHAR) = CAST(b.match_id AS VARCHAR)
+        WHERE DATE(m.start_time AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') = ?
+        GROUP BY m.match_id, m.home_team, m.away_team, m.start_time
+        ORDER BY m.start_time ASC
+    `, dateStr).Scan(&results).Error
+
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(results)
 }

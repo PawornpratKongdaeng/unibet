@@ -28,7 +28,7 @@ func InitDB() {
 		// เปลี่ยน Default จาก 127.0.0.1 เป็น db เพื่อให้รันใน Docker ได้ทันที
 		dbUser := getEnv("DB_USER", "admin")
 		dbPass := getEnv("DB_PASSWORD", "YourStrongPassword123")
-		dbHost := getEnv("DB_HOST", "db") // เปลี่ยนจาก 127.0.0.1 เป็น db
+		dbHost := getEnv("DB_HOST", "127.0.0.1") // เปลี่ยนจาก 127.0.0.1 เป็น db
 		dbPort := getEnv("DB_PORT", "5432")
 		dbName := getEnv("DB_NAME", "soccer_db")
 		sslMode := getEnv("DB_SSLMODE", "disable")
@@ -39,15 +39,21 @@ func InitDB() {
 		log.Printf("📡 Connecting to Database: %s:%s (SSL: %s)...", dbHost, dbPort, sslMode)
 	}
 
-	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+		DisableForeignKeyConstraintWhenMigrating: true, // ✅ สั่งไม่ให้สร้าง Foreign Key ล็อกตาราง
+	})
+
 	if err != nil {
 		log.Fatal("❌ Failed to connect to Database:", err)
 	}
 
 	log.Println("✅ Connected to Database successfully!")
 
-	FixMissingColumns()
+	// 1. [สำคัญ] ลบ Constraint ที่มีปัญหาทิ้งก่อนเลย เพื่อปลดล็อกตาราง matches
+	DB.Exec("ALTER TABLE IF EXISTS bet_slips DROP CONSTRAINT IF EXISTS fk_bet_slips_match")
+	DB.Exec("ALTER TABLE IF EXISTS matches DROP CONSTRAINT IF EXISTS fk_bet_slips_match")
 
+	// 2. [สำคัญ] รัน AutoMigrate ก่อน เพื่อสร้างตารางให้เสร็จ
 	DB.AutoMigrate(
 		&models.User{},
 		&models.BetSlip{},
@@ -58,6 +64,9 @@ func InitDB() {
 		&models.BankAccount{},
 		&models.SystemSetting{},
 	)
+
+	// 3. หลังจากมีตารางแล้ว ค่อยเช็ค Column (ถ้า AutoMigrate ทำงานปกติ ตัวนี้อาจไม่จำเป็นแล้วครับ)
+	FixMissingColumns()
 
 	seedAdmin()
 }
