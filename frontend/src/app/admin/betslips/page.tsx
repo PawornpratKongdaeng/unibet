@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { apiFetch } from "@/lib/api";
 import Swal from "sweetalert2";
-import { Loader2, Search, Calendar, X, Trash2 } from "lucide-react";
+import { Loader2, Search, Calendar, X, Trash2, Eye } from "lucide-react"; // 1. เพิ่ม Eye icon
+import BetslipDetailModal from "@/components/BetslipDetailModal"; // 2. อย่าลืมสร้างไฟล์นี้ตามที่เคยคุยกันนะครับ
 
 const fetcher = (url: string) => apiFetch(url).then((res) => res.json());
 
@@ -13,6 +14,10 @@ export default function BetslipHistoryPage() {
   const [selectedDate, setSelectedDate] = useState("");
   const [searchUsername, setSearchUsername] = useState("");
   const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
+
+  // 3. State สำหรับ Modal
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedBetslip, setSelectedBetslip] = useState<any>(null);
 
   // Fetch betslips
   const { data: betslips, mutate, isLoading } = useSWR(
@@ -48,15 +53,19 @@ export default function BetslipHistoryPage() {
 
     // Filter by status/type (Maung/Body)
     if (selectedFilter) {
-      // Assuming selectedFilter could be status or type
       filtered = filtered.filter((bs: any) => {
-        // Adjust this based on your data structure
         return bs.status === selectedFilter || bs.type === selectedFilter;
       });
     }
 
     return filtered;
   }, [betslips, selectedDate, searchUsername, selectedFilter]);
+
+  // 4. ฟังก์ชันเปิด Modal ดูรายละเอียด
+  const handleView = (betslip: any) => {
+    setSelectedBetslip(betslip);
+    setIsModalOpen(true);
+  };
 
   const handleDelete = async (betslip: any) => {
     const result = await Swal.fire({
@@ -261,14 +270,28 @@ export default function BetslipHistoryPage() {
                           {formatDate(betslip.created_at || betslip.bet_date)}
                         </span>
                       </td>
+                      
+                      {/* 5. แก้ไขช่อง ACTION ให้มีปุ่ม View */}
                       <td className="px-4 sm:px-6 py-4 sm:py-5 text-center">
-                        <button
-                          onClick={() => handleDelete(betslip)}
-                          className="px-4 py-2 bg-rose-500 text-white rounded-lg font-black text-[9px] uppercase tracking-tight hover:bg-rose-600 transition-all shadow-sm flex items-center justify-center gap-2 mx-auto"
-                        >
-                          <Trash2 size={14} />
-                          Delete
-                        </button>
+                        <div className="flex items-center justify-center gap-2">
+                           {/* ปุ่ม View */}
+                           <button
+                            onClick={() => handleView(betslip)}
+                            className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 hover:text-emerald-600 transition-all shadow-sm"
+                            title="View Details"
+                          >
+                            <Eye size={16} />
+                          </button>
+
+                          {/* ปุ่ม Delete */}
+                          <button
+                            onClick={() => handleDelete(betslip)}
+                            className="px-3 py-2 bg-rose-50 text-rose-500 rounded-lg hover:bg-rose-500 hover:text-white transition-all shadow-sm"
+                            title="Delete"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -278,6 +301,13 @@ export default function BetslipHistoryPage() {
           </table>
         </div>
       </div>
+
+      {/* 6. แปะ Modal ไว้ตรงนี้ */}
+      <BetslipDetailModal 
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        betslip={selectedBetslip}
+      />
     </div>
   );
 }

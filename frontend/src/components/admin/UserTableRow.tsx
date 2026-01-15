@@ -15,7 +15,7 @@ export const UserTableRow = ({ user, onDetail, onCredit, onToggleLock, onEdit, o
               <UserIcon size={14} className="sm:w-4 sm:h-4" />
             </div>
             <span className="font-[1000] text-slate-800 text-xs sm:text-sm uppercase tracking-tighter">
-              {user.name || "UNNAMED PLAYER"}
+              {user.first_name|| "UNNAMED PLAYER"}
             </span>
           </div>
         </td>
@@ -54,11 +54,12 @@ export const UserTableRow = ({ user, onDetail, onCredit, onToggleLock, onEdit, o
               Detail
             </button>
             <button 
-              onClick={() => onEdit(user)} 
-              className="h-8 px-3 bg-sky-400 text-white rounded-lg font-black text-[9px] uppercase tracking-tight hover:bg-sky-500 transition-all shadow-sm"
-            >
-              Edit
-            </button>
+  onClick={() => onEdit(user)} 
+  // เปลี่ยนจาก bg-sky-400 เป็น bg-indigo-500 เพื่อความชัดเจน
+  className="h-8 px-3 bg-indigo-500 text-white rounded-lg font-black text-[9px] uppercase tracking-tight hover:bg-indigo-600 transition-all shadow-sm flex items-center justify-center"
+>
+  Edit
+</button>
             <button 
               onClick={() => onToggleLock(user)} 
               className="h-8 px-3 bg-rose-500 text-white rounded-lg font-black text-[9px] uppercase tracking-tight hover:bg-rose-600 transition-all shadow-sm"

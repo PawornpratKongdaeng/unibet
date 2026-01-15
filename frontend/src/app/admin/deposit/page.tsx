@@ -8,7 +8,7 @@ import {
   CheckCircle, XCircle, Info, ShieldCheck
 } from "lucide-react";
 import { 
-  FinanceCard, SectionHeader, EmptyState, 
+  FinanceCard, EmptyState, 
   viewSlip, getFullImageUrl, Toast 
 } from "@/components/FinanceHelpers";
 

@@ -4,7 +4,7 @@ import useSWR from "swr";
 import { apiFetch } from "@/lib/api";
 import Swal from "sweetalert2";
 import { ArrowUpCircle, RefreshCcw, Landmark, User as UserIcon, Copy, XCircle } from "lucide-react";
-import { FinanceCard, SectionHeader, EmptyState, Toast } from "@/components/FinanceHelpers";
+import { FinanceCard, EmptyState, Toast } from "@/components/FinanceHelpers";
 
 const fetcher = (url: string) => apiFetch(url).then(res => res.json());
 

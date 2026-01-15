@@ -47,6 +47,7 @@ func Register(c *fiber.Ctx) error {
 		FullName  string `json:"fullName"`   // จาก Admin
 		FirstName string `json:"first_name"` // จากหน้าเว็บ
 		LastName  string `json:"last_name"`
+		Role      string `json:"role"`
 	}
 
 	var body RegisterRequest

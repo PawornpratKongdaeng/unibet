@@ -8,8 +8,8 @@ import { Loader2, Search, RefreshCw, Calendar, Trophy, Hash, TrendingUp } from "
 // --- Types ---
 interface MatchSummary {
   match_id: string;
-  home_team: string;
-  away_team: string;
+  home_team: string; // ตรงกับ backend
+  away_team: string; // ตรงกับ backend
   total_home: number;
   total_away: number;
   total_over: number;

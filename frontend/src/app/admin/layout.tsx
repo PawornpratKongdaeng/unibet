@@ -107,7 +107,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <NavItem icon={<Users size={20}/>} label="Accounts Management" href="/admin/users" active={pathname.includes("/users")} />
               <NavItem icon={<History size={20}/>} label="Betslip History" href="/admin/betslips" active={pathname.includes("/betslips")} />
               <NavItem icon={<Landmark size={20}/>} label="Payment Accounts" href="/admin/bank-settings" active={pathname.includes("/bank-settings")} />
-              <NavItem icon={<BarChart3 size={20}/>} label="Daily Status" href="/admin/daily-status" active={pathname.includes("/daily-status")} />
 
               {/* Member Report */}
               <div>
@@ -123,7 +122,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 {isReportOpen && (
                   <div className="mt-1 ml-6 space-y-1 border-l-2 border-emerald-100 pl-4 animate-in slide-in-from-top-2 duration-300">
                     <SubNavItem icon={<Table size={14}/>} label="Matches Summary" href="/admin/reports/matches" active={pathname.includes("/matches")} />
-                    <SubNavItem icon={<Table size={14}/>} label="Football Bets" href="/admin/reports/football" active={pathname.includes("/football")} />
                   </div>
                 )}
               </div>

@@ -8,6 +8,7 @@ import (
 	"github.com/PawornpratKongdaeng/soccer/database"
 	"github.com/PawornpratKongdaeng/soccer/models"
 	"github.com/gofiber/fiber/v2"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -169,4 +170,97 @@ func GenerateNextUsername(c *fiber.Ctx) error {
 			return c.JSON(fiber.Map{"next_username": newUsername})
 		}
 	}
+}
+func CreateUser(c *fiber.Ctx) error {
+	// 1. ตรวจสอบคนสร้าง (User ที่ Login อยู่)
+	creatorID := c.Locals("user_id").(uint)
+	creatorRole := c.Locals("role").(string) // "admin" หรือ "agent"
+
+	// Struct สำหรับรับค่า (เพิ่ม Role เข้ามา)
+	type CreateUserRequest struct {
+		Username  string `json:"username"`
+		Password  string `json:"password"`
+		FirstName string `json:"first_name"`
+		LastName  string `json:"last_name"`
+		Phone     string `json:"phone"`
+		Role      string `json:"role"` // รับค่า Role จาก Dropdown หน้าเว็บ
+	}
+
+	var body CreateUserRequest
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
+	}
+
+	// 2. Validate พื้นฐาน
+	if body.Username == "" || body.Password == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "กรุณากรอก Username และ Password"})
+	}
+
+	// 3. ตรวจสอบ Username หรือ Phone ซ้ำ
+	var count int64
+	database.DB.Model(&models.User{}).Where("username = ?", body.Username).Count(&count)
+	if count > 0 {
+		return c.Status(400).JSON(fiber.Map{"error": "Username นี้ถูกใช้งานแล้ว"})
+	}
+
+	// 4. Logic กำหนด Role และ Parent
+	targetRole := "user" // Default
+	var parentID *uint   // Default nil (ไม่มีแม่ข่าย)
+
+	if creatorRole == "admin" {
+		// ถ้า Admin สร้าง: ยอมรับ Role ที่ส่งมาได้เลย
+		if body.Role != "" {
+			targetRole = body.Role
+		}
+		// (อนาคต: ถ้า Admin อยากระบุ Parent ให้ User คนนี้ อาจต้องรับค่า parent_id มาเพิ่ม)
+	} else if creatorRole == "agent" {
+		// ถ้า Agent สร้าง: บังคับเป็น User เท่านั้น และต้องเป็นลูกข่ายตัวเอง
+		targetRole = "user"
+		parentID = &creatorID
+	}
+
+	// 5. Hash Password
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(body.Password), 14)
+
+	// 6. สร้าง User Object
+	newUser := models.User{
+		Username:  body.Username,
+		Password:  string(hashedPassword),
+		FirstName: body.FirstName,
+		LastName:  body.LastName,
+		Phone:     body.Phone,
+		Role:      targetRole, // ✅ ใช้ Role ที่คำนวณแล้ว
+		ParentID:  parentID,   // ✅ ใส่ ID ของแม่ข่าย (ถ้ามี)
+		Credit:    0,
+		Status:    "active",
+		CreatedAt: time.Now(),
+	}
+
+	// 7. บันทึก
+	if err := database.DB.Create(&newUser).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "สร้าง User ไม่สำเร็จ: " + err.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "สร้างบัญชีสำเร็จ",
+		"user": fiber.Map{
+			"id":        newUser.ID,
+			"username":  newUser.Username,
+			"role":      newUser.Role,
+			"parent_id": newUser.ParentID,
+		},
+	})
+}
+
+// ตัวอย่าง handlers/user.go
+func GetUser(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var user models.User
+
+	// ตอนนี้ .Preload("Parent") จะทำงานได้แล้ว เพราะเราประกาศใน Model แล้ว
+	if err := database.DB.Preload("Parent").First(&user, id).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "User not found"})
+	}
+
+	return c.JSON(user)
 }

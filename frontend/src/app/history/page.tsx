@@ -10,32 +10,40 @@ const fetcher = async (url: string) => {
   const res = await apiFetch(url);
   if (!res.ok) throw new Error("Failed to fetch");
   const json = await res.json();
-  // ข้อมูลจาก Go จะอยู่ในรูป { status: "success", data: { single: [], parlay: [] } }
   return json.data; 
 };
 
 export default function HistoryPage() {
- const { data, isLoading } = useSWR("/user/bet-history", fetcher, {
+  const { data, isLoading } = useSWR("/user/bet-history", fetcher, {
     refreshInterval: 5000,
   });
 
-  // 1. ปรับการรวมข้อมูลให้ใช้ตัวแปรแบบ snake_case ตาม Model Go
   const allBets = useMemo(() => {
     if (!data) return [];
     
-    // ดึงข้อมูลและใส่ type เพื่อแยกประเภท
-    const singles = (data.single || []).map((b: any) => ({ ...b, type: 'single' }));
-    const parlays = (data.parlay || []).map((b: any) => ({ ...b, type: 'parlay' }));
+    // ดึงข้อมูลและใส่ type เพื่อแยกประเภท พร้อมแก้เรื่องชื่อตัวแปร amount
+    const singles = (data.single || []).map((b: any) => ({ 
+      ...b, 
+      type: 'single',
+      // ⚠️ แก้ไข: รับค่าจาก total_stake (ตาม Go Model) มาใส่ใน amount
+      amount: b.total_stake || b.amount || 0 
+    }));
+
+    const parlays = (data.parlay || []).map((b: any) => ({ 
+      ...b, 
+      type: 'parlay',
+      // เผื่อ Parlay ใช้ชื่อต่างกัน ก็ดักไว้ทั้งคู่
+      amount: b.total_stake || b.amount || 0 ,
+      items: b.items || b.parlay_items || b.ParlayItems || []
+    }));
     
     return [...singles, ...parlays].sort((a, b) => {
-      // ใช้ created_at (ตัวเล็ก) ตาม Go JSON Tag
       const dateA = new Date(a.created_at || a.CreatedAt).getTime();
       const dateB = new Date(b.created_at || b.CreatedAt).getTime();
       return dateB - dateA;
     });
   }, [data]);
 
-  // 2. คำนวณยอดรวม (ใช้ amount และ payout ตัวเล็ก)
   const totalStake = allBets.reduce((sum: number, b: any) => sum + (Number(b.amount) || 0), 0);
   const totalReturn = allBets.reduce((sum: number, b: any) => sum + (Number(b.payout) || 0), 0);
 
@@ -94,7 +102,8 @@ export default function HistoryPage() {
             </div>
           ) : allBets.length > 0 ? (
             allBets.map((bet: any) => (
-              <div key={bet.id} className="group bg-[#022c1e] rounded-[2.5rem] p-6 border border-[#044630] hover:border-emerald-500/40 transition-all shadow-2xl relative overflow-hidden">
+              /* ✅ FIXED: Combined type and id for unique key */
+              <div key={`${bet.type}-${bet.id}`} className="group bg-[#022c1e] rounded-[2.5rem] p-6 border border-[#044630] hover:border-emerald-500/40 transition-all shadow-2xl relative overflow-hidden">
                 
                 {/* Type Indicator */}
                 <div className="absolute top-0 right-12">

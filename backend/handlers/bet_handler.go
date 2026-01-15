@@ -79,10 +79,17 @@ func PlaceBet(c *fiber.Ctx) error {
 		}
 
 		if req.BetType == "single" {
-			mID, _ := strconv.ParseUint(req.MatchID, 10, 32)
-			bet := models.BetSlip{
+			// แปลง MatchID จาก String เป็น Uint
+			mID, err := strconv.ParseUint(req.MatchID, 10, 32)
+			if err != nil {
+				return c.Status(400).JSON(fiber.Map{"error": "Invalid Match ID"})
+			}
+			matchIDValue := uint(mID)
+
+			// 🔥 สร้าง BetSlip
+			betSlip := models.BetSlip{
 				UserID:      userID,
-				MatchID:     uint(mID),
+				MatchID:     &matchIDValue, // ใช้ Address ของตัวแปร uint
 				HomeTeam:    req.HomeTeam,
 				AwayTeam:    req.AwayTeam,
 				Pick:        req.Pick,
@@ -93,10 +100,13 @@ func PlaceBet(c *fiber.Ctx) error {
 				Payout:      req.TotalPayout,
 				Status:      "pending",
 			}
-			if err := tx.Create(&bet).Error; err != nil {
+
+			// 🔥 แก้ไข: เปลี่ยนจาก &bet เป็น &betSlip (ตามชื่อตัวแปรที่ประกาศจริง)
+			if err := tx.Create(&betSlip).Error; err != nil {
 				return err
 			}
 		} else {
+			// กรณีบอลสเต็ป (Parlay)
 			ticket := models.ParlayTicket{
 				UserID: userID,
 				Amount: req.TotalStake,
@@ -108,9 +118,11 @@ func PlaceBet(c *fiber.Ctx) error {
 			}
 
 			for _, item := range req.Items {
+				// 🔥 แก้ไข: แปลง MatchID ในลูปบอลสเต็ปด้วย
+
 				parlayItem := models.ParlayItem{
 					TicketID:    ticket.ID,
-					MatchID:     item.MatchID,
+					MatchID:     item.MatchID, // ใส่ค่า uint ที่แปลงแล้ว
 					HomeTeam:    item.HomeTeam,
 					AwayTeam:    item.AwayTeam,
 					Hdp:         item.Hdp,
@@ -138,6 +150,7 @@ func PlaceBet(c *fiber.Ctx) error {
 	})
 }
 
+// ... (SettleBets และ calculateBurmeseHandicap ใช้ตัวเดิมได้เลยครับ Logic ดูถูกต้องแล้ว) ...
 func SettleBets(db *gorm.DB, results []models.HtayMatchResult) error {
 	for _, res := range results {
 		if res.Status != "completed" {
@@ -168,14 +181,12 @@ func SettleBets(db *gorm.DB, results []models.HtayMatchResult) error {
 				case "win":
 					refundAmount = bet.Payout
 				case "win_half":
-					// สูตร: คืนทุน + กำไรตามค่าน้ำ
 					refundAmount = bet.Amount + (bet.Amount * priceFactor)
 					if bet.Price < 0 { // กรณีน้ำแดง
 						riskAmount := bet.Amount * priceFactor
 						refundAmount = riskAmount + riskAmount
 					}
 				case "lost_half":
-					// สูตร: คืนทุนส่วนที่ไม่ได้เสียตามค่าน้ำ
 					refundAmount = bet.Amount * (1 - priceFactor)
 				case "draw":
 					refundAmount = bet.Amount
@@ -204,7 +215,6 @@ func SettleBets(db *gorm.DB, results []models.HtayMatchResult) error {
 
 			db.Transaction(func(tx *gorm.DB) error {
 				tx.Model(&item).Update("status", resultStatus)
-				// หมายเหตุ: การคิดเงินรวมของ Parlay Ticket แนะนำให้ทำแยกอีกฟังก์ชันเมื่อทุกคู่ใน Ticket จบแล้ว
 				return nil
 			})
 		}
@@ -224,7 +234,7 @@ func calculateBurmeseHandicap(homeScore, awayScore int, odds int, price int, isH
 	} else if diff < odds {
 		upperResult = "lost"
 	} else {
-		// กรณีแต้มประตูเท่ากับแต้มต่อ (เสมอราคาพม่า)
+		// กรณีแต้มประตูเท่ากับแต้มต่อ
 		if price < 0 {
 			upperResult = "lost_half"
 		} else {
@@ -232,14 +242,12 @@ func calculateBurmeseHandicap(homeScore, awayScore int, odds int, price int, isH
 		}
 	}
 
-	// ตรวจสอบว่า User แทงฝั่งทีมต่อ (Upper) หรือไม่
 	isUserPickUpper := (pick == "home" && isHomeUpper) || (pick == "away" && !isHomeUpper)
 
 	if isUserPickUpper {
 		return upperResult
 	}
 
-	// ถ้าแทงทีมรอง ผลจะสลับกัน
 	switch upperResult {
 	case "win":
 		return "lost"

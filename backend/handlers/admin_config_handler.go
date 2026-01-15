@@ -305,40 +305,50 @@ func GetUserBetsWithDetails(c *fiber.Ctx) error {
 
 func GetMatchesSummary(c *fiber.Ctx) error {
 	dateStr := c.Query("date")
+	if dateStr == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "กรุณาระบุวันที่"})
+	}
 
+	// ใช้ Struct ที่มี GORM Tag กำกับชื่อคอลัมน์ให้ตรงกับ SQL
 	type Result struct {
-		MatchID    string  `json:"match_id"`
-		HomeTeam   string  `json:"home_team"`
-		AwayTeam   string  `json:"away_team"`
-		TotalHome  float64 `json:"total_home"`
-		TotalAway  float64 `json:"total_away"`
-		TotalOver  float64 `json:"total_over"`
-		TotalUnder float64 `json:"total_under"`
-		TotalEven  float64 `json:"total_even"`
+		MatchID    string  `json:"match_id" gorm:"column:match_id"`
+		HomeTeam   string  `json:"home_team" gorm:"column:home_team"`
+		AwayTeam   string  `json:"away_team" gorm:"column:away_team"`
+		TotalHome  float64 `json:"total_home" gorm:"column:total_home"`
+		TotalAway  float64 `json:"total_away" gorm:"column:total_away"`
+		TotalOver  float64 `json:"total_over" gorm:"column:total_over"`
+		TotalUnder float64 `json:"total_under" gorm:"column:total_under"`
+		TotalEven  float64 `json:"total_even" gorm:"column:total_even"`
 	}
 
 	var summary []Result
 
+	// SQL ตัวนี้จะช่วยให้ชื่อทีมขึ้นแน่นอน และยอดเงินจะรวมทุกบิลที่ 'pick' ตรงเงื่อนไข
+	// ใช้ LOWER() เพื่อป้องกันปัญหา Home/home/HOME
 	err := database.DB.Raw(`
 		SELECT 
 			m.match_id, 
 			m.home_team, 
 			m.away_team,
-			COALESCE(SUM(CASE WHEN b.pick = 'home' THEN b.amount ELSE 0 END), 0) as total_home,
-			COALESCE(SUM(CASE WHEN b.pick = 'away' THEN b.amount ELSE 0 END), 0) as total_away,
-			COALESCE(SUM(CASE WHEN b.pick = 'over' THEN b.amount ELSE 0 END), 0) as total_over,
-			COALESCE(SUM(CASE WHEN b.pick = 'under' THEN b.amount ELSE 0 END), 0) as total_under,
-			COALESCE(SUM(CASE WHEN b.pick = 'draw' THEN b.amount ELSE 0 END), 0) as total_even
+			COALESCE(SUM(CASE WHEN LOWER(b.pick) IN ('home', '1') THEN b.amount ELSE 0 END), 0) as total_home,
+			COALESCE(SUM(CASE WHEN LOWER(b.pick) IN ('away', '2') THEN b.amount ELSE 0 END), 0) as total_away,
+			COALESCE(SUM(CASE WHEN LOWER(b.pick) LIKE '%over%' THEN b.amount ELSE 0 END), 0) as total_over,
+			COALESCE(SUM(CASE WHEN LOWER(b.pick) LIKE '%under%' THEN b.amount ELSE 0 END), 0) as total_under,
+			COALESCE(SUM(CASE WHEN LOWER(b.pick) IN ('draw', 'even', 'x') THEN b.amount ELSE 0 END), 0) as total_even
 		FROM matches m
 		LEFT JOIN bet_slips b ON CAST(m.match_id AS VARCHAR) = CAST(b.match_id AS VARCHAR)
 		WHERE DATE(m.start_time AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Bangkok') = ?
-		-- ✅ เพิ่ม m.start_time เข้าไปใน GROUP BY ตรงนี้ครับ
 		GROUP BY m.match_id, m.home_team, m.away_team, m.start_time 
 		ORDER BY m.start_time ASC
 	`, dateStr).Scan(&summary).Error
 
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		return c.Status(500).JSON(fiber.Map{"error": "Query Error: " + err.Error()})
+	}
+
+	// ถ้าไม่มีข้อมูล ให้ส่งเป็น Array ว่าง ([]) เพื่อไม่ให้ Frontend พัง
+	if summary == nil {
+		summary = []Result{}
 	}
 
 	return c.JSON(summary)
@@ -445,4 +455,18 @@ func GetExposure(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 	return c.JSON(results)
+}
+
+// handlers/admin_handler.go (หรือไฟล์ที่คุณวางโค้ด)
+
+// Struct สำหรับส่งกลับ Frontend (ต้องตรงกับ React)
+type MatchSummaryResponse struct {
+	MatchID    string  `json:"match_id"`
+	HomeTeam   string  `json:"home_team"`
+	AwayTeam   string  `json:"away_team"`
+	TotalHome  float64 `json:"total_home"`
+	TotalAway  float64 `json:"total_away"`
+	TotalOver  float64 `json:"total_over"`
+	TotalUnder float64 `json:"total_under"`
+	TotalEven  float64 `json:"total_even"`
 }

@@ -11,7 +11,7 @@ type ParlayTicket struct {
 	Payout      float64      `json:"payout"`     // ยอดจ่ายจริง
 	Price       int          `json:"price"`      // ค่าน้ำพม่า เช่น -80, 55
 	IsHomeUpper bool         `json:"is_home_upper" gorm:"default:true"`
-	Items       []ParlayItem `gorm:"foreignKey:TicketID"`
+	Items       []ParlayItem `gorm:"foreignKey:TicketID" json:"items"`
 	CreatedAt   time.Time
 }
 

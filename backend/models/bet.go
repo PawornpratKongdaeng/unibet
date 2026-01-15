@@ -5,11 +5,16 @@ import (
 )
 
 type BetSlip struct {
-	ID      uint  `gorm:"primaryKey" json:"id"`
-	UserID  uint  `json:"user_id"`
-	User    User  `gorm:"foreignKey:UserID;references:ID" json:"user"`
-	MatchID uint  `json:"match_id"`
+	ID     uint `gorm:"primaryKey" json:"id"`
+	UserID uint `json:"user_id"`
+	User   User `gorm:"foreignKey:UserID;references:ID" json:"user"`
+
+	// สำหรับบอลเต็ง (Single)
+	MatchID *uint `json:"match_id"`
 	Match   Match `gorm:"foreignKey:MatchID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"match"`
+
+	// 🔥 field นี้จะทำงานได้ ต้องมี struct BetItem ด้านล่าง และมี field BetSlipID
+	Items []BetItem `gorm:"foreignKey:BetSlipID" json:"items"`
 
 	// --- ข้อมูลทีม ---
 	HomeTeam string `json:"home_team"`
@@ -17,24 +22,20 @@ type BetSlip struct {
 	AwayTeam string `json:"away_team"`
 	AwayLogo string `json:"away_logo"`
 
-	// --- ข้อมูลการเดิมพัน (หัวใจหลักของราคาพม่า) ---
-	Pick   string  `json:"pick"` // "home", "away", "over", "under"
+	// --- ข้อมูลการเดิมพัน ---
+	Pick   string  `json:"pick"`
 	Amount float64 `gorm:"column:amount" json:"total_stake"`
 
-	// ราคาต่อรอง (Hdp/GoalTotal)
-	Hdp float64 `json:"hdp" gorm:"type:decimal(10,2);default:0"` // เก็บแต้มต่อ (เช่น 0, 1, 2)
+	Hdp         float64 `json:"hdp" gorm:"type:decimal(10,2);default:0"`
+	Price       int     `json:"price" gorm:"default:0"`
+	IsHomeUpper bool    `json:"is_home_upper" gorm:"default:true"`
 
-	// ราคาน้ำพม่า (สำคัญมาก)
-	Price int `json:"price" gorm:"default:0"` // เก็บค่าน้ำ -80, -10, 50
-
-	// ระบุว่าตอนที่แทง ใครเป็นทีมต่อ (ใช้คำนวณผล Handicap)
-	IsHomeUpper bool `json:"is_home_upper" gorm:"default:true"`
-
-	// --- สถานะและผลตอบแทน ---
-	Odds   float64 `json:"odds"`                            // เก็บ Odds ทั่วไป (ถ้ามี)
-	Payout float64 `json:"payout" gorm:"default:0"`         // ยอดที่จะได้หากชนะเต็ม
-	Status string  `json:"status" gorm:"default:'pending'"` // pending, win, win_half, lost, lost_half, draw
+	Odds   float64 `json:"odds"`
+	Payout float64 `json:"payout" gorm:"default:0"`
+	Status string  `json:"status" gorm:"default:'pending'"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// 🔥🔥🔥 เพิ่ม struct นี้ต่อท้ายในไฟล์ models.go 🔥🔥🔥
