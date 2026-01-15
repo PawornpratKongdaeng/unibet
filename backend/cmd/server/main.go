@@ -24,7 +24,7 @@ func main() {
 
 	// 3. Middleware: CORS
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "http://localhost:3000",
+		AllowOrigins:     "https://thunibet.com",
 		AllowCredentials: false,
 	}))
 
