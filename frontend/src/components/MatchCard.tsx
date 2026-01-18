@@ -12,8 +12,15 @@ export default function MatchCard({ match, onBetClick, selectedBets = [] }: { ma
     ? new Date(match.startTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }) 
     : "Live";
 
-  const isActive = (side: string, type: string) => 
-    selectedBets.some((b: any) => b.matchId === match.id.toString() && b.side === side && b.type === type);
+    const isActive = (side: string, type: string) => 
+      selectedBets.some((b: any) => {
+          // ✅ แก้ไข: ใช้ match.matchId ที่นี่ด้วย
+          const currentMatchId = match.matchId ? match.matchId.toString() : match.id.toString();
+  
+          return b.matchId === currentMatchId && 
+                 b.side === side && 
+                 b.type === type;
+      });
 
   // --- Sub-Component: OddsButton ---
   // ✅ 1. เพิ่ม prop "hidePrice" เข้ามา (default เป็น false)

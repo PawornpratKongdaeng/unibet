@@ -43,10 +43,8 @@ func SetupRoutes(app *fiber.App) {
 	admin := api.Group("/admin", middleware.AuthMiddleware(), middleware.RequireAdminRole())
 	{
 		// User Management
-		admin.Get("/users", handlers.GetUsers) // ดึงทั้งหมด
-		// ✅ เพิ่มบรรทัดนี้ เพื่อแก้ 405 Method Not Allowed (ต้องไปสร้าง func GetUser ใน handlers ด้วย)
+		admin.Get("/users", handlers.GetUsers)
 		admin.Get("/users/:id", handlers.GetUser)
-
 		admin.Patch("/users/:id", handlers.UpdateUser)
 		admin.Post("/users/:id/credit", handlers.AdjustUserBalance)
 		admin.Delete("/users/:id", handlers.DeleteUser)
@@ -60,12 +58,12 @@ func SetupRoutes(app *fiber.App) {
 		admin.Post("/transactions/approve/:id", handlers.ApproveTransaction)
 		admin.Post("/transactions/reject/:id", handlers.RejectTransaction)
 		admin.Get("/transactions", handlers.GetLatestTransactions)
+
+		// ✅ แก้ไข 1: เพิ่มฟังก์ชันนี้ใน Handler แล้ว ใช้งานได้เลย
 		admin.Get("/users/:id/transactions", handlers.GetUserTransactions)
+
 		admin.Get("/betslips", handlers.GetAdminBetSlips)
-
-		// Route สำหรับลบ
 		admin.Delete("/betslips/:id", handlers.DeleteBetSlip)
-
 		admin.Post("/transactions/approve-only/:id", handlers.ApproveDepositSlipOnly)
 
 		// System Configuration
@@ -80,9 +78,8 @@ func SetupRoutes(app *fiber.App) {
 		admin.Post("/users/:id/password", handlers.UpdatePassword)
 		admin.Post("/users/:id/toggle-lock", handlers.ToggleUserLock)
 
-		// ⚠️ ลบตัวซ้ำออก (เลือกใช้แค่อันใดอันหนึ่งที่ถูกต้อง)
-		// admin.Get("/users/:id/bets", handlers.GetUserBets) <--- ลบอันเก่าออก
-		admin.Get("/users/:id/bets", handlers.GetUserBetsWithDetails) // ใช้อันนี้แทน
+		// ✅ แก้ไข 2: เปลี่ยนชื่อเรียกให้ตรงกับ Handler ใหม่ (GetUserBetsAdmin)
+		admin.Get("/users/:id/bets", handlers.GetUserBetsAdmin)
 
 		admin.Get("/matches-summary", handlers.GetMatchesSummary)
 	}

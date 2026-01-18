@@ -2,14 +2,16 @@
 
 import { useState, useMemo } from "react";
 import useSWR from "swr";
-import { apiFetch } from "@/lib/api";
+// เช็ค path ให้ตรงกับโปรเจคคุณ
+import { apiFetch } from "@/lib/api"; 
 import { Loader2, Search, RefreshCw, Calendar, Trophy, Hash, TrendingUp } from "lucide-react";
 
 // --- Types ---
+// ต้องตรงกับ JSON Tag ใน Go เป๊ะๆ
 interface MatchSummary {
   match_id: string;
-  home_team: string; // ตรงกับ backend
-  away_team: string; // ตรงกับ backend
+  home_team: string;
+  away_team: string;
   total_home: number;
   total_away: number;
   total_over: number;
@@ -21,8 +23,12 @@ interface MatchSummary {
 
 /** ส่วนแสดงตัวเลขเงินเดิมพัน */
 const ValueCell = ({ value, isTotal = false }: { value: number; isTotal?: boolean }) => {
+  // แปลงเป็น Number และเช็คถ้าเป็น 0 หรือค่าน้อยมากๆ ให้แสดงขีด
   const safeVal = Number(value || 0);
-  if (safeVal === 0) return <td className="p-4 text-right text-zinc-300 font-medium">-</td>;
+  
+  if (safeVal < 0.01) {
+    return <td className={`p-4 text-right ${isTotal ? "bg-zinc-800 text-zinc-600" : "text-zinc-300"} font-medium`}>-</td>;
+  }
 
   return (
     <td className={`p-4 text-right ${isTotal ? "bg-zinc-800/50" : ""}`}>
@@ -31,7 +37,7 @@ const ValueCell = ({ value, isTotal = false }: { value: number; isTotal?: boolea
           isTotal ? "text-emerald-400" : "text-orange-500"
         }`}
       >
-        {safeVal.toLocaleString(undefined, { minimumFractionDigits: 0 })}
+        {safeVal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
       </span>
     </td>
   );
@@ -42,13 +48,17 @@ const ValueCell = ({ value, isTotal = false }: { value: number; isTotal?: boolea
 const fetcher = (url: string) => apiFetch(url).then((res) => (res.ok ? res.json() : []));
 
 export default function ExposurePage() {
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toLocaleDateString("en-CA"));
+  // Default วันที่ปัจจุบัน
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [searchTerm, setSearchTerm] = useState("");
 
   const { data, isLoading, mutate } = useSWR<MatchSummary[]>(
-    `/api/v3/admin/matches-summary?date=${selectedDate}`,
+    `/api/v3/admin/matches-summary?date=${selectedDate}`, // ตรวจสอบ Endpoint ว่าตรงกับ Backend
     fetcher,
-    { refreshInterval: 10000 }
+    { 
+      refreshInterval: 10000, // Auto refresh ทุก 10 วิ
+      revalidateOnFocus: false 
+    }
   );
 
   const matches = data || [];
@@ -56,7 +66,7 @@ export default function ExposurePage() {
   // Filter Logic
   const filteredMatches = useMemo(() => {
     return matches.filter((m) =>
-      `${m.home_team} ${m.away_team}`.toLowerCase().includes(searchTerm.toLowerCase())
+      `${m.home_team} ${m.away_team} ${m.match_id}`.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [matches, searchTerm]);
 
@@ -75,19 +85,19 @@ export default function ExposurePage() {
   }, [filteredMatches]);
 
   return (
-    <div className="min-h-screen bg-[#f1f5f9] p-6 lg:p-10 font-sans">
+    <div className="min-h-screen bg-[#f1f5f9] p-4 lg:p-10 font-sans">
       <div className="max-w-7xl mx-auto">
         
         {/* --- Header Section --- */}
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
           <div>
             <div className="flex items-center gap-3 mb-1">
-              <div className="p-2 bg-emerald-600 rounded-lg text-white">
+              <div className="p-2 bg-emerald-600 rounded-lg text-white shadow-lg shadow-emerald-200">
                 <Trophy size={20} />
               </div>
               <h2 className="text-sm font-bold text-emerald-700 uppercase tracking-widest">Administrator</h2>
             </div>
-            <h1 className="text-5xl font-black text-zinc-900 italic tracking-tighter uppercase">
+            <h1 className="text-4xl lg:text-5xl font-black text-zinc-900 italic tracking-tighter uppercase">
               Match <span className="text-emerald-600">Exposure</span>
             </h1>
           </div>
@@ -98,7 +108,7 @@ export default function ExposurePage() {
               <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 group-focus-within:text-emerald-500 transition-colors" size={18} />
               <input
                 type="date"
-                className="pl-11 pr-4 py-3 bg-white rounded-xl shadow-sm border border-zinc-200 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-bold transition-all"
+                className="pl-11 pr-4 py-3 bg-white rounded-xl shadow-sm border border-zinc-200 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-bold transition-all text-zinc-700"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
               />
@@ -107,15 +117,15 @@ export default function ExposurePage() {
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 group-focus-within:text-emerald-500 transition-colors" size={18} />
               <input
                 type="text"
-                placeholder="ค้นหาทีม..."
-                className="pl-11 pr-4 py-3 bg-white rounded-xl shadow-sm border border-zinc-200 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-bold w-64 transition-all"
+                placeholder="Find Match or ID..."
+                className="pl-11 pr-4 py-3 bg-white rounded-xl shadow-sm border border-zinc-200 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-bold w-full md:w-64 transition-all text-zinc-700"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
             <button
               onClick={() => mutate()}
-              className="p-3.5 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 active:scale-95 transition-all shadow-lg"
+              className="p-3.5 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 active:scale-95 transition-all shadow-lg flex items-center justify-center min-w-[50px]"
             >
               <RefreshCw size={20} className={isLoading ? "animate-spin" : ""} />
             </button>
@@ -125,15 +135,15 @@ export default function ExposurePage() {
         {/* --- Table Section --- */}
         <div className="bg-white rounded-[2rem] shadow-xl shadow-zinc-200/50 border border-zinc-200 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
+            <table className="w-full border-collapse min-w-[800px]">
               <thead>
                 <tr className="bg-zinc-50 border-b border-zinc-100 text-[11px] font-black text-zinc-500 uppercase tracking-[0.15em] italic">
                   <th className="p-6 text-left">Match Details</th>
-                  <th className="p-6 text-right">Home (1)</th>
-                  <th className="p-6 text-right bg-zinc-100/50">Away (2)</th>
-                  <th className="p-6 text-right">Over (O)</th>
-                  <th className="p-6 text-right bg-zinc-100/50">Under (U)</th>
-                  <th className="p-6 text-right">Draw/Even</th>
+                  <th className="p-6 text-right w-[12%]">Home (1)</th>
+                  <th className="p-6 text-right w-[12%] bg-zinc-100/50">Away (2)</th>
+                  <th className="p-6 text-right w-[12%]">Over (O)</th>
+                  <th className="p-6 text-right w-[12%] bg-zinc-100/50">Under (U)</th>
+                  <th className="p-6 text-right w-[12%]">Draw/Even</th>
                 </tr>
               </thead>
               
@@ -152,6 +162,7 @@ export default function ExposurePage() {
                         <Hash size={40} />
                       </div>
                       <p className="text-zinc-400 font-black italic uppercase text-xl">No match entries found</p>
+                      <p className="text-zinc-400 text-sm mt-2">Try changing the date or search term</p>
                     </td>
                   </tr>
                 ) : (
@@ -159,11 +170,11 @@ export default function ExposurePage() {
                     <tr key={m.match_id} className="hover:bg-emerald-50/30 transition-colors group">
                       <td className="p-6">
                         <div className="flex flex-col">
-                          <span className="text-xl font-extrabold text-zinc-800 italic uppercase leading-tight group-hover:text-emerald-700 transition-colors">
+                          <span className="text-lg md:text-xl font-extrabold text-zinc-800 italic uppercase leading-tight group-hover:text-emerald-700 transition-colors">
                             {m.home_team} <span className="text-zinc-300 mx-1 not-italic font-medium text-sm">VS</span> {m.away_team}
                           </span>
                           <code className="text-[10px] text-zinc-400 font-bold mt-1.5 bg-zinc-50 self-start px-2 py-0.5 rounded border border-zinc-100 uppercase tracking-tighter">
-                            Match ID: {m.match_id}
+                            ID: {m.match_id}
                           </code>
                         </div>
                       </td>
@@ -179,12 +190,12 @@ export default function ExposurePage() {
 
               {/* Grand Total Footer */}
               {filteredMatches.length > 0 && (
-                <tfoot className="bg-zinc-900 shadow-[0_-10px_30px_rgba(0,0,0,0.1)] relative z-10">
+                <tfoot className="bg-zinc-900 shadow-[0_-10px_30px_rgba(0,0,0,0.1)] relative z-10 text-white">
                   <tr className="border-t border-zinc-800 italic">
-                    <td className="p-8">
+                    <td className="p-6 md:p-8">
                       <div className="flex items-center gap-3">
                         <TrendingUp className="text-emerald-400" size={24} />
-                        <span className="text-2xl font-black uppercase tracking-tighter text-white">Totals</span>
+                        <span className="text-xl md:text-2xl font-black uppercase tracking-tighter">Total Exposure</span>
                       </div>
                     </td>
                     <ValueCell value={grandTotals.h} isTotal />

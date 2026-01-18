@@ -22,10 +22,13 @@ func main() {
 		BodyLimit: 10 * 1024 * 1024,
 	})
 
-	// 3. Middleware: CORS
+	// 🟢 3. Middleware: CORS (ตั้งค่าที่นี่จุดเดียวจบ)
+	// ต้องใส่ https://thunibet.com เพื่อให้หน้าเว็บจริงเข้าได้
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "https://thunibet.com",
-		AllowCredentials: false,
+		AllowOrigins:     "https://thunibet.com, http://localhost:3000",
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
+		AllowMethods:     "GET, POST, HEAD, PUT, DELETE, PATCH, OPTIONS",
+		AllowCredentials: true,
 	}))
 
 	// 4. Setup Routes
@@ -36,18 +39,15 @@ func main() {
 		cron.Recover(cron.DefaultLogger),
 	))
 
-	// Task 1: ตรวจสอบผลและจ่ายเงิน (ทุก 5 นาที)
+	// Task 1: Auto-Settlement (Every 5 mins)
 	_, err := c.AddFunc("*/5 * * * *", func() {
 		log.Println("⏰ [Cron] Task: Auto-Settlement running...")
 		services.AutoSettlement()
 	})
 
-	// Task 2: ดึงแมตช์ใหม่จาก API มาลง DB (ทุก 10 นาที) ✅ เพิ่มส่วนนี้
+	// Task 2: Sync Matches (Every 10 mins)
 	_, err = c.AddFunc("*/10 * * * *", func() {
 		log.Println("⏰ [Cron] Task Started: Syncing matches...")
-
-		// ✅ เรียกใช้ผ่าน services (ตรวจสอบให้มั่นใจว่า import github.com/.../services มาแล้ว)
-		// ❌ ห้ามตั้งชื่อตัวแปรว่า SyncMatchesFromAPI := services.SyncMatchesFromAPI("moung")
 		errSync := services.SyncMatchesFromAPI("moung")
 
 		if errSync != nil {

@@ -6,7 +6,7 @@ import BetSlipModal from "@/components/BetSlipModal";
 import Header from "@/components/Header"; 
 
 // ✅ 1. ตั้งค่า Base URL
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v3";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v3";
 
 export default function SingleBetPage() {
   const [matches, setMatches] = useState<any[]>([]);
@@ -55,27 +55,34 @@ export default function SingleBetPage() {
   }, [fetchData]);
 
   // --- 3. ฟังก์ชันจัดการเมื่อคลิกราคา ---
-  const handleBetClick = (match: any, side: string, type: string, oddsValue: any, teamName: string, hdp: any) => {
-    const homeName = match.home?.engName || match.home?.name || "Home";
-    const awayName = match.away?.engName || match.away?.name || "Away";
-    const currentLeague = match.league?.name || "League";
-  
-    const newBet = {
-      id: `${match.id}-${side}-${type}`,
-      matchId: match.id.toString(),
-      homeName: homeName, 
-      awayName: awayName,
-      side,      
-      type,      
-      odds: oddsValue,
-      teamName: teamName, 
-      hdp: hdp?.toString() || "0",
-      league: currentLeague
-    };
-  
-    setSelectedBets([newBet]); 
-    setIsSlipOpen(true);
+ // ไฟล์: SingleBetPage.tsx
+
+const handleBetClick = (match: any, side: string, type: string, oddsValue: any, teamName: string, hdp: any) => {
+    
+  // ✅ แก้ไข: ใช้ match.matchId (ตามที่เห็นใน Log)
+  const realMatchId = match.matchId ? match.matchId.toString() : match.id.toString();
+
+  // ... ส่วนอื่นเหมือนเดิม
+  const homeName = match.home?.engName || match.home?.name || "Home";
+  const awayName = match.away?.engName || match.away?.name || "Away";
+  const currentLeague = match.league?.name || "League";
+
+  const newBet = {
+    id: `${realMatchId}-${side}-${type}`, // ใช้ realMatchId เป็น Key
+    matchId: realMatchId,                 // ✅ ส่งค่าที่ถูกต้อง (354850923) ไป
+    homeName: homeName, 
+    awayName: awayName,
+    side,      
+    type,      
+    odds: oddsValue,
+    teamName: teamName, 
+    hdp: hdp?.toString() || "0",
+    league: currentLeague
   };
+
+  setSelectedBets([newBet]); 
+  setIsSlipOpen(true);
+};
 
   // --- 4. จัดกลุ่มลีก ---
   const groupedData = useMemo(() => {
