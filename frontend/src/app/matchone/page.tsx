@@ -22,7 +22,7 @@ export default function SinglePlayPage() {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE_URL}/match/moung`, {
+      const res = await fetch(`${API_BASE_URL}api/v3/match/moung`, {
         method: "GET",
         headers: { 
           "Content-Type": "application/json", 

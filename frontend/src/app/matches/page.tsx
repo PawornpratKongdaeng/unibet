@@ -7,7 +7,7 @@ import Header from "@/components/Header";
 import BetCapsule from "@/components/BetCapsule"; 
 
 // Config Base URL
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v3";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const MIN_PARLAY = 2;  // ขั้นต่ำ 2 คู่
 const MAX_PARLAY = 10; // สูงสุด 12 คู่
 
@@ -22,7 +22,7 @@ export default function MixplayPage() {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE_URL}/match/moung`, {
+      const res = await fetch(`${API_BASE_URL}api/v3/match/moung`, {
         method: "GET",
         headers: { 
           "Content-Type": "application/json", 
