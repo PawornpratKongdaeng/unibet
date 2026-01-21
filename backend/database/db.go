@@ -28,7 +28,7 @@ func InitDB() {
 		// เปลี่ยน Default จาก 127.0.0.1 เป็น db เพื่อให้รันใน Docker ได้ทันที
 		dbUser := getEnv("DB_USER", "admin")
 		dbPass := getEnv("DB_PASSWORD", "YourStrongPassword123")
-		dbHost := getEnv("DB_HOST", "127.0.0.1") // เปลี่ยนจาก 127.0.0.1 เป็น db
+		dbHost := getEnv("DB_HOST", "db") // เปลี่ยนจาก 127.0.0.1 เป็น db
 		dbPort := getEnv("DB_PORT", "5432")
 		dbName := getEnv("DB_NAME", "soccer_db")
 		sslMode := getEnv("DB_SSLMODE", "disable")
