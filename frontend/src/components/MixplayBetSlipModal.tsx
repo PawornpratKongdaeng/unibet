@@ -148,7 +148,7 @@ export default function MixplayBetSlipModal({
 
       console.log("🚀 Payload Frontend Only Fix:", payload);
 
-      const response = await fetch(`${apiBaseUrl}/user/bet`, {
+      const response = await fetch(`${apiBaseUrl}/api/v3/user/bet`, {
         method: "POST",
         headers: { 
             "Content-Type": "application/json", 

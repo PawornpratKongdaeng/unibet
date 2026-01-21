@@ -195,7 +195,7 @@ export default function BetSlipModal({ bets, isOpen, setIsOpen, onRemove, onClea
 
       console.log("🚀 Payload Sending:", payload);
 
-      const response = await fetch(`${apiBaseUrl}/user/bet`, {
+      const response = await fetch(`${apiBaseUrl}/api/v3/user/bet`, {
         method: "POST",
         headers: { 
             "Content-Type": "application/json", 
