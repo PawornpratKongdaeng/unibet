@@ -14,13 +14,27 @@ import (
 
 var jwtKey = []byte("SECRET_KEY_NA_KRUB")
 
+// 🟢 แก้ไข: เพิ่มการอ่าน Token จาก Cookie ด้วย
 func IsAuthenticated(c *fiber.Ctx) error {
-	authHeader := c.Get("Authorization")
-	if authHeader == "" {
+	var tokenString string
+
+	// 1. ลองอ่านจาก Cookie ก่อน (สำคัญมากสำหรับ Cross-Domain)
+	tokenString = c.Cookies("token")
+
+	// 2. ถ้าไม่มีใน Cookie ให้ไปดูใน Header (เผื่อใช้กับ Mobile App หรือ Postman)
+	if tokenString == "" {
+		authHeader := c.Get("Authorization")
+		if authHeader != "" {
+			tokenString = strings.TrimPrefix(authHeader, "Bearer ")
+		}
+	}
+
+	// ถ้าหาไม่เจอทั้งคู่ -> Error
+	if tokenString == "" {
 		return c.Status(401).JSON(fiber.Map{"error": "กรุณาเข้าสู่ระบบ"})
 	}
 
-	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	// Parse Token
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		return jwtKey, nil
 	})
@@ -31,7 +45,6 @@ func IsAuthenticated(c *fiber.Ctx) error {
 
 	claims := token.Claims.(jwt.MapClaims)
 
-	// ปรับตรงนี้: แปลงจาก float64 (JWT default) ให้เป็น uint ทันที
 	userID := uint(claims["user_id"].(float64))
 
 	c.Locals("user_id", userID)
@@ -39,6 +52,7 @@ func IsAuthenticated(c *fiber.Ctx) error {
 
 	return c.Next()
 }
+
 func Register(c *fiber.Ctx) error {
 	type RegisterRequest struct {
 		Username  string `json:"username"`
@@ -55,7 +69,7 @@ func Register(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
 	}
 
-	// 1. ตรวจสอบเบอร์โทรซ้ำ (เฉพาะถ้ากรอกมา)
+	// 1. ตรวจสอบเบอร์โทรซ้ำ
 	if body.Phone != "" {
 		var count int64
 		database.DB.Model(&models.User{}).Where("phone = ?", body.Phone).Count(&count)
@@ -64,26 +78,24 @@ func Register(c *fiber.Ctx) error {
 		}
 	}
 
-	// 2. จัดการเรื่อง Username (ถ้าว่างให้ Auto-gen)
+	// 2. จัดการเรื่อง Username
 	finalUsername := body.Username
 	if finalUsername == "" {
-		finalUsername = generateUsername() // เรียกใช้ฟังก์ชันสุ่มชื่อที่คุณมี
+		finalUsername = generateUsername()
 	}
 
-	// 3. จัดการเรื่องชื่อ (Logic การแยก FullName)
+	// 3. จัดการเรื่องชื่อ
 	fname := body.FirstName
 	lname := body.LastName
 	full := body.FullName
 
 	if full != "" && fname == "" {
-		// ถ้าส่ง FullName มา (เช่น "สมชาย ดีใจ") ให้แยกเป็น fname และ lname
 		parts := strings.SplitN(full, " ", 2)
 		fname = parts[0]
 		if len(parts) > 1 {
 			lname = parts[1]
 		}
 	} else if full == "" && fname != "" {
-		// ถ้าส่งแยกมาแต่ไม่มี FullName ให้รวมร่างให้
 		full = fmt.Sprintf("%s %s", fname, lname)
 	}
 
@@ -97,7 +109,7 @@ func Register(c *fiber.Ctx) error {
 		Phone:       body.Phone,
 		FirstName:   fname,
 		LastName:    lname,
-		FullName:    full, // บันทึกลงช่อง FullName ด้วยเพื่อโชว์ในตาราง
+		FullName:    full,
 		Role:        "user",
 		Credit:      0,
 		Status:      "active",
@@ -105,9 +117,7 @@ func Register(c *fiber.Ctx) error {
 		BankAccount: "",
 	}
 
-	// 6. บันทึกลงฐานข้อมูล
 	if err := database.DB.Create(&user).Error; err != nil {
-		// ส่ง Error จริงกลับไปเผื่อ Debug
 		return c.Status(500).JSON(fiber.Map{"error": "สมัครไม่สำเร็จ: " + err.Error()})
 	}
 
@@ -117,6 +127,8 @@ func Register(c *fiber.Ctx) error {
 		"fullName": full,
 	})
 }
+
+// 🟢 แก้ไข: เพิ่มการ Set Cookie ในฟังก์ชัน Login
 func Login(c *fiber.Ctx) error {
 	var body struct {
 		Username string `json:"username"`
@@ -127,7 +139,6 @@ func Login(c *fiber.Ctx) error {
 	}
 
 	var user models.User
-	// ใช้ Find เพื่อเช็คว่ามีตัวตนไหมโดยไม่พ่น Error Log
 	if err := database.DB.Where("username = ?", body.Username).Limit(1).Find(&user).Error; err != nil || user.ID == 0 {
 		return c.Status(401).JSON(fiber.Map{"error": "ไม่พบผู้ใช้นี้ หรือรหัสผ่านผิด"})
 	}
@@ -143,6 +154,26 @@ func Login(c *fiber.Ctx) error {
 	})
 
 	tokenString, _ := token.SignedString(jwtKey)
+
+	// ---------------------------------------------------------
+	// 🍪 สร้าง Cookie (ส่วนที่เพิ่มมา)
+	// ---------------------------------------------------------
+	cookie := new(fiber.Cookie)
+	cookie.Name = "token"
+	cookie.Value = tokenString
+	cookie.Expires = time.Now().Add(24 * time.Hour)
+
+	// ✅ จุดสำคัญ: ใส่จุดข้างหน้าเพื่อให้ Subdomain (backoffice) อ่านได้
+	cookie.Domain = ".thunibet.com"
+
+	cookie.Path = "/"
+	cookie.Secure = true     // ต้องเป็น true เพราะเว็บจริงเป็น https
+	cookie.HTTPOnly = false  // false เพื่อให้ JS อ่านได้ (หรือจะ true ก็ได้ถ้า API จัดการเองหมด)
+	cookie.SameSite = "None" // สำคัญสำหรับการข้ามโดเมน
+
+	// สั่ง Set Cookie ไปใน Header ตอบกลับ
+	c.Cookie(cookie)
+	// ---------------------------------------------------------
 
 	return c.JSON(fiber.Map{
 		"token": tokenString,
