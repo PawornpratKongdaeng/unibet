@@ -44,7 +44,7 @@ export default function UnibetLoginPage() {
         if (["admin", "agent", "master"].includes(userRole)) {
             // ถ้าตอนนี้ "ไม่ได้" อยู่ที่หน้า Backoffice -> ดีดข้ามโดเมน
             if (!currentHost.startsWith("backoffice")) {
-                window.location.href = `${BACKOFFICE_URL}/dashboard`; 
+                window.location.href = `${BACKOFFICE_URL}`; 
             } else {
                 // ถ้าอยู่ที่ Backoffice อยู่แล้ว -> ไปหน้า Dashboard ได้เลย (ไม่ต้องโหลดใหม่)
                 router.push("/admin"); 
@@ -55,7 +55,7 @@ export default function UnibetLoginPage() {
         else {
             // ถ้าตอนนี้ "ดันหลง" มาอยู่ที่หน้า Backoffice -> ดีดกลับเว็บหลัก
             if (currentHost.startsWith("backoffice")) {
-                window.location.href = `${MAIN_URL}/member`; // หรือหน้าแรก
+                window.location.href = `${MAIN_URL}`; // หรือหน้าแรก
             } else {
                 // ถ้าอยู่เว็บหลักอยู่แล้ว -> ไปหน้าเล่นเกม
                 router.push("/");
