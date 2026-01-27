@@ -26,7 +26,7 @@ export function middleware(request: NextRequest) {
     // ถ้า Path **ไม่ได้** ขึ้นต้นด้วย /admin (เช่นเข้าหน้า / หรือ /profile ของ user)
     if (!pathname.startsWith('/admin')) {
       // บังคับเด้งไปหน้า Login ของ Admin ทันที
-      return NextResponse.redirect(new URL('/admin/login', request.url));
+      return NextResponse.redirect(new URL('/admin', request.url));
     }
     
     // ถ้าเป็น path /admin อยู่แล้ว ก็ปล่อยผ่าน
