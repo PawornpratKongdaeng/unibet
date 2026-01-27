@@ -47,7 +47,7 @@ export default function UnibetLoginPage() {
                 window.location.href = `${BACKOFFICE_URL}/dashboard`; 
             } else {
                 // ถ้าอยู่ที่ Backoffice อยู่แล้ว -> ไปหน้า Dashboard ได้เลย (ไม่ต้องโหลดใหม่)
-                router.push("/dashboard"); 
+                router.push("/admin"); 
             }
         } 
         
