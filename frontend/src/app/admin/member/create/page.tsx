@@ -6,6 +6,7 @@ import {
   User, Lock, Phone, Save, XCircle, Eye, EyeOff, UserPlus, Users, KeyRound
 } from "lucide-react";
 import Swal from "sweetalert2";
+import { apiFetch } from "@/lib/api";
 
 // Config API
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v3";
@@ -85,39 +86,37 @@ export default function CreateMemberPage() {
 
     setIsLoading(true);
 
-    // ✅ Logic แยกชื่อ-นามสกุล (เพื่อให้ตรงกับ Backend struct: FirstName, LastName)
+    // Logic แยกชื่อ-นามสกุล
     const fullName = formData.name.trim();
     const nameParts = fullName.split(" "); 
     const firstName = nameParts[0] || ""; 
-    const lastName = nameParts.slice(1).join(" ") || ""; // เอาส่วนที่เหลือมาต่อกันเป็นนามสกุล
+    const lastName = nameParts.slice(1).join(" ") || "";
 
-    // 2. Prepare Payload (Mapping ให้ตรงกับ struct User ของ Go)
+    // Prepare Payload
     const payload = {
        username: formData.username,
        password: formData.password,
-       role: formData.role,        // json:"role"
-       phone: formData.phone,      // json:"phone"
-       first_name: firstName,      // json:"first_name"
-       last_name: lastName,        // json:"last_name"
-       fullName: fullName,         // json:"fullName" (ส่งไปด้วยเผื่อ Backend ใช้แสดงผลเลย)
-       status: 'active'            // json:"status"
-       // parent_id: Backend ควรจะดึงจาก User ที่ Login อยู่ (Context) อัตโนมัติ
+       role: formData.role,
+       phone: formData.phone,
+       first_name: firstName,
+       last_name: lastName,
+       fullName: fullName,
+       status: 'active'
     };
 
     try {
-      const res = await fetch(`${API_URL}/admin/users`, {
+      // 🟢 แก้ไข: ใช้ apiFetch แทน fetch ปกติ
+      // - ไม่ต้องใส่ URL เต็ม ใส่แค่ /admin/users พอ
+      // - ไม่ต้องใส่ Header Token เอง (apiFetch จัดการให้)
+      // - Cookie จะถูกส่งไปด้วยอัตโนมัติ เพราะ apiFetch มี credentials: include
+      const res = await apiFetch("/admin/users", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${localStorage.getItem("token")}`,
-        },
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-
+      // เช็ค Response
       if (!res.ok) {
-        // จัดการ Error ที่ Backend อาจส่งมา เช่น "username already exists"
+        const data = await res.json();
         throw new Error(data.error || data.message || "Something went wrong");
       }
 
