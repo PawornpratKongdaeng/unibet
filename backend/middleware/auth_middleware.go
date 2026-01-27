@@ -12,23 +12,38 @@ import (
 // ต้องใช้ Key เดียวกับที่ใช้ใน handlers/auth.go (Login)
 var jwtKey = []byte("SECRET_KEY_NA_KRUB")
 
-// AuthMiddleware: ตรวจสอบ Token ว่าล็อกอินมาจริงไหม
+// AuthMiddleware: ตรวจสอบ Token (รองรับทั้ง Header และ Cookie)
 func AuthMiddleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// 1. ดึง Token จาก Header (Authorization: Bearer <token>)
+		var tokenString string
+
+		// ---------------------------------------------------------
+		// 1. ลองดึงจาก Header (Authorization: Bearer <token>)
+		// ---------------------------------------------------------
 		authHeader := c.Get("Authorization")
-		if authHeader == "" {
+		if authHeader != "" {
+			parts := strings.Split(authHeader, " ")
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				tokenString = parts[1]
+			}
+		}
+
+		// ---------------------------------------------------------
+		// 2. ถ้าใน Header ไม่มี -> ให้ลองดึงจาก Cookie
+		// (สำคัญมากสำหรับระบบ Subdomain SSO)
+		// ---------------------------------------------------------
+		if tokenString == "" {
+			tokenString = c.Cookies("token") // ชื่อ cookie ต้องตรงกับตอน Set ใน Login
+		}
+
+		// ถ้าหาไม่เจอทั้งคู่ -> Error
+		if tokenString == "" {
 			return c.Status(401).JSON(fiber.Map{"error": "ไม่ได้ Login (No Token)"})
 		}
 
-		// ตัดคำว่า "Bearer " ออก
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			return c.Status(401).JSON(fiber.Map{"error": "รูปแบบ Token ไม่ถูกต้อง"})
-		}
-		tokenString := parts[1]
-
-		// 2. แกะ Token และตรวจสอบ
+		// ---------------------------------------------------------
+		// 3. แกะ Token และตรวจสอบความถูกต้อง
+		// ---------------------------------------------------------
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			return jwtKey, nil
 		})
@@ -37,20 +52,21 @@ func AuthMiddleware() fiber.Handler {
 			return c.Status(401).JSON(fiber.Map{"error": "Token หมดอายุ หรือไม่ถูกต้อง"})
 		}
 
-		// 3. *** ฝัง UserID และ Role เข้าไปใน Context (Locals) ***
-		// Fiber ใช้ c.Locals ในการส่งค่าข้ามฟังก์ชัน (ต่างจาก Gin ที่ใช้ c.Set)
-		// ...ในฟังก์ชัน AuthMiddleware()...
+		// 4. *** ฝัง UserID และ Role เข้าไปใน Context ***
 		if claims, ok := token.Claims.(jwt.MapClaims); ok {
 			userID := uint(claims["user_id"].(float64))
-			// ไปดึง User เต็มๆ จาก DB
+
+			// ดึง User จาก DB
 			var user models.User
 			if err := database.DB.First(&user, userID).Error; err != nil {
 				return c.Status(401).JSON(fiber.Map{"error": "ไม่พบข้อมูลผู้ใช้ในระบบ"})
 			}
-			// ----> ตรงนี้!
+
+			// Save ลง Locals เพื่อใช้ต่อใน Handler ถัดไป
 			c.Locals("user", &user)
-			c.Locals("role", user.Role)
-			c.Locals("user_id", user.ID) // <-- ต้องมี!! เพื่อให้ handler อื่นดึง user_id ได้
+			c.Locals("role", strings.ToLower(user.Role)) // แปลงเป็นตัวเล็กกันพลาด
+			c.Locals("user_id", user.ID)
+
 			return c.Next()
 		}
 
@@ -58,26 +74,39 @@ func AuthMiddleware() fiber.Handler {
 	}
 }
 
-// RequireAdminRole: ตรวจสอบว่าเป็น Admin หรือไม่ (ต้องผ่าน AuthMiddleware มาก่อน)
+// RequireAdminRole: ตรวจสอบว่าเป็น Admin หรือไม่
 func RequireAdminRole() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// ดึงออกมาแล้วระบุว่าเป็น string ให้ชัดเจน
 		role, ok := c.Locals("role").(string)
-
-		// ตรวจสอบทั้งกรณีที่ไม่มีค่า หรือค่าไม่ใช่ admin
-		// แนะนำใช้ strings.ToLower เพื่อกันเหนียวเรื่องตัวพิมพ์เล็ก-ใหญ่ครับ
-		if !ok || strings.ToLower(role) != "admin" {
+		if !ok || role != "admin" {
 			return c.Status(403).JSON(fiber.Map{"error": "ห้ามเข้า! เฉพาะ Admin เท่านั้น"})
 		}
 		return c.Next()
 	}
 }
+
+// RequireAgentRole: อนุญาต Agent, Master และ Admin
 func RequireAgentRole() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		role, ok := c.Locals("role").(string) // ตรวจสอบก่อนว่าเป็น string ไหม
+		role, ok := c.Locals("role").(string)
 		if !ok || (role != "agent" && role != "master" && role != "admin") {
-			return c.Status(403).JSON(fiber.Map{"error": "สิทธิ์ของคุณไม่เพียงพอ"})
+			return c.Status(403).JSON(fiber.Map{"error": "สิทธิ์ของคุณไม่เพียงพอ (Agent Only)"})
 		}
+		return c.Next()
+	}
+}
+
+// RequireAdminOrAgent: อนุญาตทั้ง Admin และ Agent (Logic เหมือน RequireAgentRole แต่เขียนแยกให้ชัดเจน)
+func RequireAdminOrAgent() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		role, ok := c.Locals("role").(string)
+
+		if !ok || (role != "admin" && role != "agent" && role != "master") {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "Access Denied: สำหรับ Admin หรือ Agent เท่านั้น",
+			})
+		}
+
 		return c.Next()
 	}
 }

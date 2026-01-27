@@ -16,7 +16,7 @@ func SetupRoutes(app *fiber.App) {
 
 	// --- 🟢 1. Public Routes ---
 	api.Post("/login", handlers.Login)
-	api.Post("/register", handlers.Register)
+	api.Post("/register", handlers.Register) // อันนี้คือสมัครสมาชิกหน้าเว็บ (ลูกค้าสมัครเอง)
 	api.Get("/settings", handlers.GetSettings)
 	api.Get("/config/bank", handlers.GetAdminBank)
 	api.Post("/transaction/withdraw-request", handlers.RequestWithdraw)
@@ -40,6 +40,7 @@ func SetupRoutes(app *fiber.App) {
 	}
 
 	// --- 🔴 4. Admin Routes ---
+	// Group นี้เช็คสิทธิ์ Admin เท่านั้น
 	admin := api.Group("/admin", middleware.AuthMiddleware(), middleware.RequireAdminRole())
 	{
 		// User Management
@@ -48,8 +49,10 @@ func SetupRoutes(app *fiber.App) {
 		admin.Patch("/users/:id", handlers.UpdateUser)
 		admin.Post("/users/:id/credit", handlers.AdjustUserBalance)
 		admin.Delete("/users/:id", handlers.DeleteUser)
-		admin.Post("/users", handlers.Register)
-		app.Post("/admin/users", handlers.IsAuthenticated, handlers.CreateUser)
+
+		// ✅ แก้ไข: ใช้ handlers.CreateUser เพื่อให้รองรับการสร้าง Agent/Member และใส่ Role ได้
+		// (ลบ app.Post ที่เขียนผิดด้านล่างออก แล้วใช้บรรทัดนี้แทน)
+		admin.Post("/users", handlers.CreateUser)
 
 		// Financial & Transactions
 		admin.Get("/finance/summary", handlers.GetFinanceSummary)
@@ -58,8 +61,6 @@ func SetupRoutes(app *fiber.App) {
 		admin.Post("/transactions/approve/:id", handlers.ApproveTransaction)
 		admin.Post("/transactions/reject/:id", handlers.RejectTransaction)
 		admin.Get("/transactions", handlers.GetLatestTransactions)
-
-		// ✅ แก้ไข 1: เพิ่มฟังก์ชันนี้ใน Handler แล้ว ใช้งานได้เลย
 		admin.Get("/users/:id/transactions", handlers.GetUserTransactions)
 
 		admin.Get("/betslips", handlers.GetAdminBetSlips)
@@ -77,10 +78,7 @@ func SetupRoutes(app *fiber.App) {
 		// User Actions
 		admin.Post("/users/:id/password", handlers.UpdatePassword)
 		admin.Post("/users/:id/toggle-lock", handlers.ToggleUserLock)
-
-		// ✅ แก้ไข 2: เปลี่ยนชื่อเรียกให้ตรงกับ Handler ใหม่ (GetUserBetsAdmin)
 		admin.Get("/users/:id/bets", handlers.GetUserBetsAdmin)
-
 		admin.Get("/matches-summary", handlers.GetMatchesSummary)
 	}
 }

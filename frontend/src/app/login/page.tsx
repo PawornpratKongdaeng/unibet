@@ -1,9 +1,13 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/navigation"; // ยังคงใช้สำหรับ redirect ภายในโดเมนเดียวกัน
 import { showToast } from "@/lib/sweetAlert";
 import { apiFetch } from "@/lib/api";
-import { User, Lock, ChevronRight, Info } from "lucide-react";
+import { User, Lock, Info } from "lucide-react";
+
+// 🎯 กำหนด URL ของระบบ (ควรย้ายไปไว้ใน .env ในอนาคต)
+const BACKOFFICE_URL = "https://backoffice.thunibet.com"; // หรือ http://backoffice.thunibet.local:3000 สำหรับ localhost
+const MAIN_URL = "https://thunibet.com";                 // หรือ http://thunibet.local:3000 สำหรับ localhost
 
 export default function UnibetLoginPage() {
   const [username, setUsername] = useState("");
@@ -24,22 +28,45 @@ export default function UnibetLoginPage() {
       const data = await res.json();
 
       if (res.ok) {
+        // ✅ เก็บ Token
         localStorage.setItem("token", data.token);
         localStorage.setItem("user", JSON.stringify(data.user));
         showToast("success", `Welcome back, ${data.user.username}`);
 
         const userRole = data.user.role.toLowerCase();
-        if (userRole === "admin") {
-          router.push("/admin");
-        } else if (userRole === "agent" || userRole === "master") {
-          router.push("/agent");
-        } else {
-          router.push("/");
+        const currentHost = window.location.hostname;
+
+        // ==========================================
+        // 🚀 LOGIC การแยกโดเมนตาม Role
+        // ==========================================
+        
+        // 1. กลุ่มทีมงาน (Admin, Agent, Master) -> ต้องไป Backoffice
+        if (["admin", "agent", "master"].includes(userRole)) {
+            // ถ้าตอนนี้ "ไม่ได้" อยู่ที่หน้า Backoffice -> ดีดข้ามโดเมน
+            if (!currentHost.startsWith("backoffice")) {
+                window.location.href = `${BACKOFFICE_URL}/dashboard`; 
+            } else {
+                // ถ้าอยู่ที่ Backoffice อยู่แล้ว -> ไปหน้า Dashboard ได้เลย (ไม่ต้องโหลดใหม่)
+                router.push("/dashboard"); 
+            }
+        } 
+        
+        // 2. กลุ่มลูกค้า (User Member) -> ต้องไปเว็บหลัก
+        else {
+            // ถ้าตอนนี้ "ดันหลง" มาอยู่ที่หน้า Backoffice -> ดีดกลับเว็บหลัก
+            if (currentHost.startsWith("backoffice")) {
+                window.location.href = `${MAIN_URL}/member`; // หรือหน้าแรก
+            } else {
+                // ถ้าอยู่เว็บหลักอยู่แล้ว -> ไปหน้าเล่นเกม
+                router.push("/");
+            }
         }
+
       } else {
         showToast("error", data.error || "Invalid username or password");
       }
     } catch (err) {
+      console.error(err);
       showToast("error", "Server connection failed");
     } finally {
       setLoading(false);
@@ -50,10 +77,9 @@ export default function UnibetLoginPage() {
     // พื้นหลังสีเขียว Unibet
     <div className="min-h-screen bg-[#127447] flex flex-col items-center justify-center p-4 font-sans">
       
-      {/* ส่วนบน: Logo (ถ้ามีไฟล์ภาพให้ใช้ <img />) */}
+      {/* ส่วนบน: Logo */}
       <div className="mb-8 flex flex-col items-center">
         <div className="flex items-center gap-1 mb-2">
-            {/* จำลองโลโก้ Unibet */}
             <h1 className="text-white text-5xl font-black italic tracking-tighter">UNIBET</h1>
         </div>
         {/* จุดสีเขียว 6 จุดตามโลโก้ */}
@@ -65,7 +91,7 @@ export default function UnibetLoginPage() {
       </div>
 
       <div className="w-full max-w-[400px]">
-        {/* การ์ด Login สีขาวตามแบบ FINAL 688 */}
+        {/* การ์ด Login สีขาว */}
         <div className="bg-white rounded-xl shadow-2xl overflow-hidden">
           
           <div className="p-8">
@@ -106,7 +132,7 @@ export default function UnibetLoginPage() {
                 </div>
               </div>
 
-              {/* Remember Me (Optional) */}
+              {/* Remember Me */}
               <div className="flex items-center gap-2 px-1">
                 <input type="checkbox" id="remember" className="accent-[#127447] w-4 h-4" />
                 <label htmlFor="remember" className="text-xs text-gray-500 font-medium cursor-pointer">

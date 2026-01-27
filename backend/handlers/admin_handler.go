@@ -41,9 +41,20 @@ func generateUsername() string {
 	}
 }
 func GetUsers(c *fiber.Ctx) error {
+	role := c.Locals("role").(string)
+	userID := c.Locals("user_id").(uint)
+
 	var users []models.User
-	// ดึงข้อมูลผู้ใช้ทั้งหมด (เรียงตาม ID ล่าสุด)
-	if err := database.DB.Order("id desc").Find(&users).Error; err != nil {
+	query := database.DB.Order("id desc")
+
+	// ถ้าเป็น Agent -> ให้เห็นเฉพาะ User ที่มี ParentID เป็นตัว Agent เอง
+	if role == "agent" {
+		query = query.Where("parent_id = ?", userID)
+	}
+
+	// (ถ้าเป็น Admin ก็จะไม่ติด Where คือเห็นทั้งหมดเหมือนเดิม)
+
+	if err := query.Find(&users).Error; err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "ไม่สามารถดึงข้อมูลผู้ใช้ได้"})
 	}
 	return c.JSON(users)
@@ -172,73 +183,87 @@ func GenerateNextUsername(c *fiber.Ctx) error {
 	}
 }
 func CreateUser(c *fiber.Ctx) error {
-	// 1. ตรวจสอบคนสร้าง (User ที่ Login อยู่)
-	creatorID := c.Locals("user_id").(uint)
-	creatorRole := c.Locals("role").(string) // "admin" หรือ "agent"
+	// 1. ตรวจสอบคนสร้าง (ดึงจาก JWT Middleware)
+	// ใช้การเช็ค ok เพื่อป้องกัน panic ถ้าค่าเป็น nil
+	creatorID, okID := c.Locals("user_id").(uint)
+	creatorRole, okRole := c.Locals("role").(string)
 
-	// Struct สำหรับรับค่า (เพิ่ม Role เข้ามา)
+	if !okID || !okRole {
+		return c.Status(401).JSON(fiber.Map{"error": "Unauthorized: ไม่พบข้อมูลผู้ใช้งาน"})
+	}
+
+	// Struct สำหรับรับค่า
 	type CreateUserRequest struct {
-		Username  string `json:"username"`
-		Password  string `json:"password"`
-		FirstName string `json:"first_name"`
-		LastName  string `json:"last_name"`
-		Phone     string `json:"phone"`
-		Role      string `json:"role"` // รับค่า Role จาก Dropdown หน้าเว็บ
+		Username  string  `json:"username"`
+		Password  string  `json:"password"`
+		FirstName string  `json:"first_name"`
+		LastName  string  `json:"last_name"`
+		Phone     string  `json:"phone"`
+		Role      string  `json:"role"`   // admin ส่งมาเป็น 'agent' หรือ 'user'
+		Credit    float64 `json:"credit"` // เผื่อกรณีสร้าง Agent แล้วอยากใส่เครดิตตั้งต้นเลย
 	}
 
 	var body CreateUserRequest
 	if err := c.BodyParser(&body); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "ข้อมูลไม่ถูกต้อง"})
+		return c.Status(400).JSON(fiber.Map{"error": "JSON Format ไม่ถูกต้อง"})
 	}
 
-	// 2. Validate พื้นฐาน
+	// 2. Validate ข้อมูลพื้นฐาน
 	if body.Username == "" || body.Password == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "กรุณากรอก Username และ Password"})
 	}
 
-	// 3. ตรวจสอบ Username หรือ Phone ซ้ำ
+	// 3. ตรวจสอบ Username ซ้ำ
 	var count int64
 	database.DB.Model(&models.User{}).Where("username = ?", body.Username).Count(&count)
 	if count > 0 {
 		return c.Status(400).JSON(fiber.Map{"error": "Username นี้ถูกใช้งานแล้ว"})
 	}
 
-	// 4. Logic กำหนด Role และ Parent
-	targetRole := "user" // Default
-	var parentID *uint   // Default nil (ไม่มีแม่ข่าย)
+	// 4. Logic กำหนด Role และ Parent (หัวใจสำคัญ)
+	targetRole := "user" // ค่าเริ่มต้น
+	var parentID *uint   // ค่าเริ่มต้น nil
 
 	if creatorRole == "admin" {
-		// ถ้า Admin สร้าง: ยอมรับ Role ที่ส่งมาได้เลย
-		if body.Role != "" {
+		// --- กรณี Admin เป็นคนสร้าง ---
+		// อนุญาตให้กำหนด Role ได้ แต่ต้องเป็นค่าที่ระบบรองรับเท่านั้น
+		if body.Role == "agent" || body.Role == "user" {
 			targetRole = body.Role
 		}
-		// (อนาคต: ถ้า Admin อยากระบุ Parent ให้ User คนนี้ อาจต้องรับค่า parent_id มาเพิ่ม)
+		// Admin สร้าง User ไม่มี Parent (หรือคุณอาจจะไม่ได้ส่ง ParentID มา)
 	} else if creatorRole == "agent" {
-		// ถ้า Agent สร้าง: บังคับเป็น User เท่านั้น และต้องเป็นลูกข่ายตัวเอง
+		// --- กรณี Agent เป็นคนสร้าง ---
+		// บังคับเป็น User เท่านั้น
 		targetRole = "user"
+		// บังคับผูก Parent เป็น Agent คนนี้
 		parentID = &creatorID
+	} else {
+		// กรณี User ธรรมดาพยายามยิง API สร้าง (ไม่ควรเกิดขึ้นถ้า Middleware กันไว้ดี)
+		return c.Status(403).JSON(fiber.Map{"error": "ไม่มีสิทธิ์สร้างบัญชี"})
 	}
 
 	// 5. Hash Password
-	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(body.Password), 14)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(body.Password), 14)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Encryption error"})
+	}
 
-	// 6. สร้าง User Object
+	// 6. เตรียม Object
 	newUser := models.User{
 		Username:  body.Username,
 		Password:  string(hashedPassword),
 		FirstName: body.FirstName,
 		LastName:  body.LastName,
 		Phone:     body.Phone,
-		Role:      targetRole, // ✅ ใช้ Role ที่คำนวณแล้ว
-		ParentID:  parentID,   // ✅ ใส่ ID ของแม่ข่าย (ถ้ามี)
-		Credit:    0,
+		Role:      targetRole,  // ✅ Role ที่ผ่าน Logic แล้ว
+		ParentID:  parentID,    // ✅ ParentID ที่ถูกต้อง
+		Credit:    body.Credit, // ใส่เครดิตตั้งต้น (ถ้ามี)
 		Status:    "active",
-		CreatedAt: time.Now(),
 	}
 
-	// 7. บันทึก
+	// 7. บันทึกลง Database
 	if err := database.DB.Create(&newUser).Error; err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "สร้าง User ไม่สำเร็จ: " + err.Error()})
+		return c.Status(500).JSON(fiber.Map{"error": "Database error: " + err.Error()})
 	}
 
 	return c.JSON(fiber.Map{
@@ -246,8 +271,9 @@ func CreateUser(c *fiber.Ctx) error {
 		"user": fiber.Map{
 			"id":        newUser.ID,
 			"username":  newUser.Username,
-			"role":      newUser.Role,
+			"role":      newUser.Role, // เช็คค่านี้ตอน Return กลับไป
 			"parent_id": newUser.ParentID,
+			"credit":    newUser.Credit,
 		},
 	})
 }

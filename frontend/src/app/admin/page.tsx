@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { 
-  Users, Wallet, ArrowRight, UserCheck, Download, Upload, RefreshCw, Calendar
+  Users, Wallet, ArrowRight, Download, Upload, RefreshCw, Calendar
 } from "lucide-react"; 
 import { apiFetch } from "@/lib/api"; 
 
@@ -10,7 +10,8 @@ const formatCurrency = (val: number) =>
   new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(val).replace('฿', '฿ ');
 
 const StatCard = ({ label, value, icon, colorClass }: any) => (
-  <div className="bg-white border border-slate-100 p-6 rounded-[2.5rem] shadow-sm hover:shadow-md transition-all group">
+  // เอา transition-all ออก
+  <div className="bg-white border border-slate-100 p-6 rounded-[2.5rem] shadow-sm hover:shadow-md group">
     <div className={`p-3 w-fit rounded-2xl bg-slate-50 ${colorClass} mb-4`}>{icon}</div>
     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{label}</p>
     <h4 className="text-2xl font-[1000] text-slate-800 tracking-tighter italic leading-none">{value}</h4>
@@ -30,7 +31,6 @@ export default function AdminDashboard() {
   const [dateError, setDateError] = useState("");
 
   const loadData = useCallback(async () => {
-    // Check 30 days limit
     const start = new Date(startDate);
     const end = new Date(endDate);
     const diffTime = Math.abs(end.getTime() - start.getTime());
@@ -48,7 +48,6 @@ export default function AdminDashboard() {
       const [usersRes, financeRes, logsRes] = await Promise.all([
         apiFetch("/admin/users"),
         apiFetch("/admin/finance/summary"),
-        // ส่ง query param เป็นช่วงวันที่ที่เลือก
         apiFetch(`/admin/transactions?start=${startDate}&end=${endDate}`) 
       ]);
 
@@ -64,46 +63,57 @@ export default function AdminDashboard() {
         totalWithdraw: finance?.total_withdraw || 0,
       });
 
-      setTransactions(Array.isArray(logs) ? logs : []);
+      // ✅ Filter: เอาเฉพาะ Deposit และ Withdraw เท่านั้น
+      if (Array.isArray(logs)) {
+        const filteredLogs = logs.filter((tx: any) => 
+          ['deposit', 'withdraw'].includes(tx.type)
+        );
+        setTransactions(filteredLogs);
+      } else {
+        setTransactions([]);
+      }
+
     } catch (err) {
       console.error(err);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [startDate, endDate]); // Trigger loadData เมื่อวันที่เปลี่ยน
+  }, [startDate, endDate]); 
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  if (isLoading) return <div className="p-20 text-center font-black animate-pulse">LOADING SYSTEM...</div>;
+  // เอา animate-pulse ออก
+  if (isLoading) return <div className="p-20 text-center font-black text-slate-400">LOADING SYSTEM...</div>;
 
   return (
-    <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-10 animate-in fade-in duration-700">
+    // เอา animate-in fade-in duration-700 ออก
+    <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-10">
       
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-6">
-        <StatCard label="Total Members" value={stats?.totalUsers} icon={<Users size={20}/>} colorClass="text-slate-800" />
-        <StatCard label="Credit in System" value={formatCurrency(stats?.totalMemberUnit)} icon={<Wallet size={20}/>} colorClass="text-sky-500" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard label="Total Deposit" value={formatCurrency(stats?.totalDeposit)} icon={<Download size={20}/>} colorClass="text-emerald-500" />
         <StatCard label="Total Withdraw" value={formatCurrency(stats?.totalWithdraw)} icon={<Upload size={20}/>} colorClass="text-rose-500" />
-        <StatCard label="Active Users" value={stats?.activeUsers} icon={<UserCheck size={20}/>} colorClass="text-[#fb2c5c]" />
+        <StatCard label="Total Members" value={stats?.totalUsers} icon={<Users size={20}/>} colorClass="text-slate-800" />
+        <StatCard label="Credit in System" value={formatCurrency(stats?.totalMemberUnit)} icon={<Wallet size={20}/>} colorClass="text-sky-500" />
       </div>
 
       {/* Transaction Table */}
       <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
         
-        {/* Table Header with Date Picker */}
+        {/* Table Header */}
         <div className="p-8 border-b border-slate-50 flex flex-col md:flex-row md:justify-between md:items-center gap-6">
           <div>
-            <h3 className="text-xl font-[1000] text-slate-800 uppercase italic leading-none">Financial Audit Logs</h3>
+            <h3 className="text-xl font-[1000] text-slate-800 uppercase italic leading-none">Deposit & Withdraw Logs</h3>
             <p className="text-[10px] text-slate-400 font-black uppercase mt-1 tracking-widest">
-              Range: {startDate} to {endDate} (Max 30 days)
+              Range: {startDate} to {endDate}
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             {dateError && (
-              <span className="text-[10px] font-black text-rose-500 bg-rose-50 px-3 py-1 rounded-full border border-rose-100 animate-bounce">
+              // เอา animate-bounce ออก
+              <span className="text-[10px] font-black text-rose-500 bg-rose-50 px-3 py-1 rounded-full border border-rose-100">
                 {dateError}
               </span>
             )}
@@ -135,9 +145,11 @@ export default function AdminDashboard() {
             <button 
               onClick={loadData} 
               disabled={isRefreshing}
-              className={`p-4 rounded-2xl transition-all shadow-sm ${isRefreshing ? 'bg-slate-100' : 'bg-slate-900 hover:bg-emerald-500 text-white hover:shadow-emerald-200 shadow-xl'}`}
+              // เอา transition-all ออก
+              className={`p-4 rounded-2xl shadow-sm ${isRefreshing ? 'bg-slate-100' : 'bg-slate-900 hover:bg-emerald-500 text-white hover:shadow-emerald-200 shadow-xl'}`}
             >
-              <RefreshCw size={20} className={isRefreshing ? 'animate-spin text-slate-400' : ''} />
+              {/* เอา animate-spin ออก */}
+              <RefreshCw size={20} className={isRefreshing ? 'text-slate-400' : ''} />
             </button>
           </div>
         </div>
@@ -147,9 +159,8 @@ export default function AdminDashboard() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/50 text-[10px] font-[1000] text-slate-400 uppercase tracking-widest border-b border-slate-100">
-                <th className="p-6">Source (From)</th>
-                <th className="p-6">Destination (To)</th>
-                <th className="p-6 text-center">Type</th>
+                <th className="p-6">Transaction Type</th>
+                <th className="p-6">User / Member</th>
                 <th className="p-6 text-right">Amount</th>
                 <th className="p-6 text-right">Balance After</th>
                 <th className="p-6 text-right">Date/Time</th>
@@ -158,38 +169,30 @@ export default function AdminDashboard() {
             <tbody className="divide-y divide-slate-50">
               {transactions.length > 0 ? (
                 transactions.map((tx: any, idx: number) => {
-                  let fromName = "BANK / SYSTEM";
-                  let toName = tx.to_user;
-                  let badgeStyle = "bg-slate-100 text-slate-500";
+                  const isDeposit = tx.type === 'deposit';
+                  
+                  // กำหนด Style ตามประเภท
+                  const badgeStyle = isDeposit 
+                    ? "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200"
+                    : "bg-rose-100 text-rose-700 ring-1 ring-rose-200";
 
-                  if (tx.from_agent) {
-                    fromName = tx.from_agent;
-                    badgeStyle = "bg-amber-100 text-amber-700 ring-1 ring-amber-200";
-                  } else if (tx.type === 'withdraw') {
-                    fromName = tx.to_user;
-                    toName = "BANK SETTLEMENT";
-                    badgeStyle = "bg-rose-100 text-rose-700 ring-1 ring-rose-200";
-                  } else if (tx.type === 'deposit') {
-                    badgeStyle = "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200";
-                  }
+                  const amountColor = isDeposit ? 'text-emerald-600' : 'text-rose-600';
+                  const sign = isDeposit ? '+' : '-';
 
                   return (
-                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors group">
-                      <td className="p-6 font-black text-xs text-slate-500 italic uppercase">{fromName}</td>
-                      <td className="p-6 font-black text-xs text-slate-800 tracking-tight">
-                        <div className="flex items-center gap-2">
-                          <ArrowRight size={12} className="text-slate-300 group-hover:translate-x-1 transition-transform" />
-                          {toName}
-                        </div>
-                      </td>
-                      <td className="p-6 text-center">
+                    // เอา transition-colors ออก
+                    <tr key={idx} className="hover:bg-slate-50/50 group">
+                      <td className="p-6">
                         <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-tighter ${badgeStyle}`}>
                           {tx.type}
                         </span>
                       </td>
+                      <td className="p-6 font-bold text-xs text-slate-700">
+                        {tx.to_user || tx.username}
+                      </td>
                       <td className="p-6 text-right font-black italic">
-                        <span className={tx.type === 'deposit' ? 'text-emerald-600' : 'text-rose-600'}>
-                          {tx.type === 'deposit' ? '+' : '-'} ฿{Number(tx.amount).toLocaleString()}
+                        <span className={amountColor}>
+                          {sign} ฿{Number(tx.amount).toLocaleString()}
                         </span>
                       </td>
                       <td className="p-6 text-right font-black text-slate-900 tabular-nums">
@@ -205,8 +208,8 @@ export default function AdminDashboard() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={6} className="p-20 text-center text-slate-300 font-black uppercase tracking-[0.2em] italic">
-                    No transactions found in this period
+                  <td colSpan={5} className="p-20 text-center text-slate-300 font-black uppercase tracking-[0.2em] italic">
+                    No deposit/withdraw records found
                   </td>
                 </tr>
               )}
