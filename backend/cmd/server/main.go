@@ -25,10 +25,12 @@ func main() {
 	// 🟢 3. Middleware: CORS (ตั้งค่าที่นี่จุดเดียวจบ)
 	// ต้องใส่ https://thunibet.com เพื่อให้หน้าเว็บจริงเข้าได้
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "https://thunibet.com, http://localhost:3000",
+		// 👇👇 เพิ่ม backoffice เข้าไปในรายการนี้ครับ (คั่นด้วย comma) 👇👇
+		AllowOrigins: "https://thunibet.com, https://backoffice.thunibet.com, http://localhost:3000",
+
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
 		AllowMethods:     "GET, POST, HEAD, PUT, DELETE, PATCH, OPTIONS",
-		AllowCredentials: true,
+		AllowCredentials: true, // อันนี้ถูกต้องแล้ว ห้ามเอาออก
 	}))
 
 	// 4. Setup Routes

@@ -30,6 +30,9 @@ export const apiFetch = async (endpoint: string, options: any = {}) => {
     const response = await fetch(url, {
       ...options,
       headers,
+      
+      // 👇👇 [สำคัญมาก] ต้องเติมบรรทัดนี้ครับ 👇👇
+      credentials: "include", 
     });
 
     if (typeof window !== "undefined") {
