@@ -61,7 +61,6 @@ export default function CreateAgentPage() {
     phone: "",
     password: "",
     password_confirmation: "",
-    credit: "", // Credit ตั้งต้น
     share: "",  // ส่วนแบ่งหุ้น (%)
     com: "",    // คอมมิชชั่น (%)
   });
@@ -103,7 +102,6 @@ export default function CreateAgentPage() {
       first_name: firstName,
       last_name: lastName,
       fullName: fullName,
-      credit: Number(formData.credit) || 0,
       share: Number(formData.share) || 0,
       com: Number(formData.com) || 0,
       status: 'active'
@@ -133,7 +131,7 @@ export default function CreateAgentPage() {
         customClass: { popup: "rounded-[2.5rem]" }
       });
 
-      router.push("/admin/agents"); // Redirect ไปหน้ารายชื่อ Agent
+      router.push("/admin/users"); // Redirect ไปหน้ารายชื่อ Agent
 
     } catch (error: any) {
       Swal.fire({
@@ -250,7 +248,6 @@ export default function CreateAgentPage() {
           <FormInput 
             label="Initial Credit (THB)" 
             name="credit" 
-            value={formData.credit} 
             onChange={handleChange} 
             icon={CreditCard} 
             type="number"

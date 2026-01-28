@@ -76,7 +76,7 @@ func SetupRoutes(app *fiber.App) {
 		admin.Post("/settle", services.ManualSettlement)
 
 		// User Actions
-		admin.Post("/users/:id/password", handlers.UpdatePassword)
+		admin.Patch("/users/:id/password", handlers.ChangeUserPassword)
 		admin.Post("/users/:id/toggle-lock", handlers.ToggleUserLock)
 		admin.Get("/users/:id/bets", handlers.GetUserBetsAdmin)
 		admin.Get("/matches-summary", handlers.GetMatchesSummary)

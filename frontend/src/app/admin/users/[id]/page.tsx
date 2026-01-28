@@ -6,13 +6,15 @@ import { apiFetch } from "@/lib/api";
 import Swal from "sweetalert2";
 import { Loader2, ArrowLeft, KeyRound, Calendar, X, Network } from "lucide-react";
 
+// ✅ 1. ปรับ Fetcher ให้เรียบง่ายและรองรับ apiFetch (จัดการ Base URL อัตโนมัติ)
 const fetcher = async (url: string) => {
   const res = await apiFetch(url);
   if (!res.ok) {
     if (res.status === 404) {
       return null;
     }
-    throw new Error(`Failed to fetch: ${res.status}`);
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to fetch: ${res.status}`);
   }
   return res.json();
 };
@@ -23,7 +25,7 @@ export default function UserDetailPage() {
   const userId = params?.id as string;
   const [selectedDate, setSelectedDate] = useState("");
 
-  // Fetch user details
+  // ✅ 2. เปลี่ยน SWR Key เป็น Relative Path (ตัด API_URL ออก)
   const { data: user, isLoading: userLoading } = useSWR(
     userId ? `/admin/users/${userId}` : null,
     fetcher,
@@ -32,12 +34,13 @@ export default function UserDetailPage() {
         console.error("Error fetching user:", error);
       },
       revalidateOnFocus: false,
+      shouldRetryOnError: false, // ไม่ต้อง Retry ถ้า 404
     }
   );
 
-  // Fallback to list if needed (Logic เดิมของคุณ)
+  // Fallback: ถ้า API เส้น Detail หาไม่เจอ ลองหาใน List รวม (Cache เดิม)
   const { data: usersList } = useSWR(
-    user ? null : `/admin/users`,
+    user ? null : `/admin/users`, // ✅ ใช้ Relative Path
     fetcher,
     { revalidateOnFocus: false }
   );
@@ -50,62 +53,63 @@ export default function UserDetailPage() {
     return null;
   }, [user, usersList, userId]);
 
-  // Fetch transactions
+  // ✅ 3. Transactions SWR Key เป็น Relative Path + Query String
   const { data: transactions, isLoading: transactionsLoading } = useSWR(
-    foundUser && userId ? `/admin/users/${userId}/transactions${selectedDate ? `?date=${selectedDate}` : ""}` : null,
+    foundUser && userId 
+      ? `/admin/users/${userId}/transactions${selectedDate ? `?date=${selectedDate}` : ""}` 
+      : null,
     fetcher,
     { revalidateOnFocus: false }
   );
 
-  // ✅ Helper Function: แยกประเภท In/Out
+  // Helper: แยกประเภท In/Out
   const getFlowType = (type: string) => {
     const lowerType = type?.toLowerCase() || '';
-    // เงินเข้า: ฝาก, ชนะ, รับโบนัส
-    if (['deposit', 'win', 'reward', 'bonus', 'in'].includes(lowerType)) {
+    if (['deposit', 'win', 'reward', 'bonus', 'in', 'adjust_in'].includes(lowerType)) {
       return 'IN';
     }
-    // เงินออก: ถอน, แทง
-    if (['bet', 'withdraw', 'maung_bet', 'out'].includes(lowerType)) {
+    if (['bet', 'withdraw', 'maung_bet', 'out', 'adjust_out'].includes(lowerType)) {
       return 'OUT';
     }
-    return 'IN'; // Default
+    return 'IN';
   };
 
-  // ✅ Calculation Logic: คำนวณ Balance ย้อนหลัง
+  // Logic: คำนวณ Balance ย้อนหลัง
   const processedTransactions = useMemo(() => {
     if (!transactions || !Array.isArray(transactions) || !foundUser) return [];
 
-    // 1. เรียงวันที่ ล่าสุด -> เก่าสุด
+    // เรียงจาก ใหม่ -> เก่า
     const sortedDocs = [...transactions].sort((a: any, b: any) => {
       return new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime();
     });
 
-    // 2. ตั้งต้นด้วย Credit ปัจจุบันของผู้ใช้
+    // เริ่มต้นคำนวณจาก Credit ปัจจุบันของผู้ใช้
     let currentBalanceCalc = Number(foundUser.credit || 0);
 
-    // 3. วนลูปเพื่อคำนวณและแปะค่า Balance ณ ตอนนั้นเข้าไป
     return sortedDocs.map((tx) => {
       const flow = getFlowType(tx.transaction_type || tx.type);
       const amount = Number(tx.amount || 0);
+      
+      // ตรวจสอบว่า API ส่ง Balance มาให้หรือไม่
       const isAPIBalanceAvailable = tx.balance !== undefined && tx.balance !== null;
 
-      // Balance ณ บรรทัดนี้ (ถ้า API ส่งมาให้ใช้ API, ถ้าไม่มีให้ใช้ค่าที่คำนวณ)
+      // ถ้ามี Balance จาก API ให้ใช้เลย ถ้าไม่มีให้ใช้ค่าที่คำนวณ
       const rowBalance = isAPIBalanceAvailable ? Number(tx.balance) : currentBalanceCalc;
 
-      // เตรียมค่าสำหรับรอบถัดไป (ซึ่งคือรายการที่เก่ากว่านี้)
-      // ถ้าบรรทัดนี้เงินเข้า (+) แปลว่าก่อนหน้านี้เงินต้องน้อยกว่านี้ -> ลบออก
-      // ถ้าบรรทัดนี้เงินออก (-) แปลว่าก่อนหน้านี้เงินต้องมากกว่านี้ -> บวกกลับ
+      // เตรียมค่า currentBalanceCalc สำหรับ row ถัดไป (ซึ่งคือ transaction ที่เก่ากว่า)
       if (!isAPIBalanceAvailable) {
          if (flow === 'IN') {
+             // ถ้า transaction นี้เงินเข้า แปลว่าก่อนหน้านี้เงินต้องน้อยกว่านี้ (ลบออก)
              currentBalanceCalc -= amount;
          } else {
+             // ถ้า transaction นี้เงินออก แปลว่าก่อนหน้านี้เงินต้องมากกว่านี้ (บวกคืน)
              currentBalanceCalc += amount;
          }
       }
 
       return {
         ...tx,
-        flow, // IN หรือ OUT
+        flow,
         displayBalance: rowBalance,
         displayAmount: amount
       };
@@ -113,46 +117,59 @@ export default function UserDetailPage() {
 
   }, [transactions, foundUser]);
 
-  // คำนวณยอดรวมสุทธิของช่วงเวลาที่เลือก
   const totalNetChange = useMemo(() => {
      return processedTransactions.reduce((acc, tx) => {
          return tx.flow === 'IN' ? acc + tx.displayAmount : acc - tx.displayAmount;
      }, 0);
   }, [processedTransactions]);
 
-  // ... (Keep existing handlers like handlePasswordChange, formatDate) ...
+  // Handle Password Change
   const handlePasswordChange = async () => {
     const { value: formValues } = await Swal.fire({
       title: `<div class="text-left"><p class="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none mb-1">Security</p><p class="text-xl font-[1000] text-zinc-800 uppercase italic">Password Change</p></div>`,
       html: `
         <div class="p-2 text-left space-y-4">
-          <input id="swal-password" type="password" class="w-full p-4 bg-zinc-50 border-2 border-zinc-100 rounded-xl font-bold text-sm outline-none" placeholder="New Password">
-          <input id="swal-confirm" type="password" class="w-full p-4 bg-zinc-50 border-2 border-zinc-100 rounded-xl font-bold text-sm outline-none" placeholder="Confirm Password">
+          <input id="swal-password" type="password" class="w-full p-4 bg-zinc-50 border-2 border-zinc-100 rounded-xl font-bold text-sm outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/10 transition-all" placeholder="New Password">
+          <input id="swal-confirm" type="password" class="w-full p-4 bg-zinc-50 border-2 border-zinc-100 rounded-xl font-bold text-sm outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/10 transition-all" placeholder="Confirm Password">
         </div>
       `,
       showCancelButton: true,
       confirmButtonText: 'CHANGE PASSWORD',
       confirmButtonColor: '#ef4444',
-      customClass: { popup: 'rounded-[2.5rem]' },
+      cancelButtonColor: '#f4f4f5',
+      customClass: { 
+          popup: 'rounded-[2.5rem]',
+          cancelButton: 'text-zinc-500 hover:bg-zinc-200'
+      },
       preConfirm: () => {
         const password = (document.getElementById('swal-password') as HTMLInputElement).value;
         const confirm = (document.getElementById('swal-confirm') as HTMLInputElement).value;
+        
         if (!password || password.length < 6) return Swal.showValidationMessage('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร');
         if (password !== confirm) return Swal.showValidationMessage('รหัสผ่านไม่ตรงกัน');
-        return { password };
+        
+        return { new_password: password };
       }
     });
 
     if (formValues) {
       try {
+        // ✅ 4. ใช้ apiFetch พร้อม Relative Path
         const res = await apiFetch(`/admin/users/${userId}/password`, {
           method: "PATCH",
           body: JSON.stringify(formValues),
         });
+        
         if (res.ok) {
-          Swal.fire({ icon: 'success', title: 'Password Changed', timer: 1000, showConfirmButton: false });
+          Swal.fire({ icon: 'success', title: 'Password Changed', timer: 1500, showConfirmButton: false, customClass: { popup: 'rounded-[2rem]' } });
         } else {
-          Swal.fire("Error", "ไม่สามารถเปลี่ยนรหัสผ่านได้", "error");
+          const errorData = await res.json().catch(() => ({}));
+          Swal.fire({
+            icon: 'error', 
+            title: 'Error', 
+            text: errorData.error || "ไม่สามารถเปลี่ยนรหัสผ่านได้",
+            customClass: { popup: 'rounded-[2rem]' }
+          });
         }
       } catch (e) {
         Swal.fire("System Error", "ติดต่อ Server ไม่ได้", "error");
@@ -352,10 +369,10 @@ export default function UserDetailPage() {
                       {/* STATUS BADGE */}
                       <td className="px-4 sm:px-6 py-4 sm:py-5 text-center">
                         <span className={`inline-flex items-center justify-center px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider w-12 ${
-                            isIn
-                            ? "bg-emerald-100 text-emerald-600 border border-emerald-200"
-                            : "bg-rose-100 text-rose-600 border border-rose-200"
-                          }`}>
+                          isIn
+                          ? "bg-emerald-100 text-emerald-600 border border-emerald-200"
+                          : "bg-rose-100 text-rose-600 border border-rose-200"
+                        }`}>
                           {tx.flow}
                         </span>
                       </td>

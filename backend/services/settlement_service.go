@@ -74,7 +74,7 @@ func AutoSettlement() {
 
 	// เรียก API ผลบอล
 	client := resty.New().SetTimeout(15 * time.Second)
-	url := "https://htayapi.com/mmk-autokyay/v3/results?key=demoapi"
+	url := "https://htayapi.com/mmk-autokyay/moung?key=eXBW5dl32piS2UbN75U1vikjWJJ9v7Ke"
 	var apiData ResultsResponse
 	resp, err := client.R().SetResult(&apiData).Get(url)
 
